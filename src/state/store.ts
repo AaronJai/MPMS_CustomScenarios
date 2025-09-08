@@ -13,6 +13,11 @@ export interface SignalState {
   controlPoints: DataPoint[]; // separate array for control points
   isVisible: boolean;
   order: number; // for stacking order
+  zoom: {
+    scale: 'full' | '1s' | '30s' | '5m' | '10m'; // zoom preset
+    startTime: number; // start time in seconds for current view
+    endTime: number; // end time in seconds for current view
+  };
 }
 
 export interface ScenarioStore {
@@ -40,6 +45,9 @@ export interface ScenarioStore {
   deleteControlPoint: (signalId: SignalKey, pointIndex: number) => void;
   regenerateSignalFromControlPoints: (signalId: SignalKey) => void;
   resetSignalToDefault: (signalId: SignalKey) => void;
+  
+  // Zoom actions
+  setSignalZoom: (signalId: SignalKey, scale: 'full' | '1s' | '30s' | '5m' | '10m', startTime?: number) => void;
 }
 
 // Generate baseline data for a signal
@@ -83,7 +91,12 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
             data: generateBaselineData(signalId, get().duration, get().sampleRate),
             controlPoints: [], // Initialize with empty control points
             isVisible: true,
-            order: nextOrder
+            order: nextOrder,
+            zoom: {
+              scale: 'full',
+              startTime: 0,
+              endTime: get().duration,
+            }
           };
         } else {
           // Signal was previously created but deselected - make it visible
@@ -119,7 +132,12 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
           data: generateBaselineData(signalId, get().duration, get().sampleRate),
           controlPoints: [], // Initialize with empty control points
           isVisible: true,
-          order: nextOrder
+          order: nextOrder,
+          zoom: {
+            scale: 'full',
+            startTime: 0,
+            endTime: get().duration,
+          }
         }
       }
     });
@@ -342,6 +360,62 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
       ...currentState,
       controlPoints: [], // Clear all control points
       data: generateBaselineData(signalId, get().duration, get().sampleRate), // Reset to baseline
+    };
+    
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+  },
+  
+  setSignalZoom: (signalId, scale, startTime) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState) return;
+    
+    const duration = get().duration;
+    let newStartTime = startTime ?? 0;
+    let newEndTime = duration;
+    
+    // Calculate time ranges based on scale
+    switch (scale) {
+      case '1s':
+        newEndTime = Math.min(newStartTime + 1, duration);
+        break;
+      case '30s':
+        newEndTime = Math.min(newStartTime + 30, duration);
+        break;
+      case '5m':
+        newEndTime = Math.min(newStartTime + 300, duration); // 5 minutes = 300 seconds
+        break;
+      case '10m':
+        newEndTime = Math.min(newStartTime + 600, duration); // 10 minutes = 600 seconds
+        break;
+      case 'full':
+      default:
+        newStartTime = 0;
+        newEndTime = duration;
+        break;
+    }
+    
+    // Ensure we don't exceed bounds
+    if (newEndTime > duration) {
+      newEndTime = duration;
+      if (scale !== 'full') {
+        const scaleSeconds = scale === '1s' ? 1 : scale === '30s' ? 30 : scale === '5m' ? 300 : 600;
+        newStartTime = Math.max(0, newEndTime - scaleSeconds);
+      }
+    }
+    
+    const updatedState = {
+      ...currentState,
+      zoom: {
+        scale,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      }
     };
     
     set({

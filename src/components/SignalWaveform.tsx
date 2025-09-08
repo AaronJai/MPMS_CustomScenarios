@@ -12,6 +12,7 @@ import {
   ChartEvent,
   ActiveElement,
 } from 'chart.js';
+import zoomPlugin from 'chartjs-plugin-zoom';
 import { Line } from 'react-chartjs-2';
 import { Button } from '@/components/ui/button';
 import { SignalKey, SIGNALS } from '@/data/columns';
@@ -24,17 +25,18 @@ ChartJS.register(
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  zoomPlugin
 );
 
-interface InteractiveSignalChartProps {
+interface SignalWaveformProps {
   signalId: SignalKey;
   duration: number; // seconds
 }
 
-export function InteractiveSignalChart({ signalId, duration }: InteractiveSignalChartProps) {
+export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   const chartRef = useRef<ChartJS<'line'>>(null);
-  const { signalStates, addControlPoint, deleteControlPoint, resetSignalToDefault } = useScenarioStore();
+  const { signalStates, addControlPoint, deleteControlPoint, resetSignalToDefault, setSignalZoom } = useScenarioStore();
   
   const signal = SIGNALS[signalId];
   const signalState = signalStates[signalId];
@@ -43,7 +45,25 @@ export function InteractiveSignalChart({ signalId, duration }: InteractiveSignal
     return <div>Signal not found: {signalId}</div>;
   }
 
-  const { data, controlPoints } = signalState;
+  const { data, controlPoints, zoom } = signalState;
+
+  // Helper function for consistent time formatting
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    
+    // Format based on zoom level to avoid messy decimals
+    if (zoom.scale === '1s') {
+      // For 1s zoom, show one decimal place
+      return `${minutes}:${remainingSeconds.toFixed(1).padStart(4, '0')}`;
+    } else if (zoom.scale === '30s') {
+      // For 30s zoom, show whole seconds
+      return `${minutes}:${Math.round(remainingSeconds).toString().padStart(2, '0')}`;
+    } else {
+      // For longer durations, show whole seconds
+      return `${minutes}:${Math.round(remainingSeconds).toString().padStart(2, '0')}`;
+    }
+  };
 
   // Convert data to Chart.js format
   const chartData = {
@@ -104,12 +124,49 @@ export function InteractiveSignalChart({ signalId, duration }: InteractiveSignal
           title: (context) => {
             const seconds = context[0]?.parsed?.x;
             if (typeof seconds !== 'number') return '';
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = seconds % 60;
-            return `Time: ${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+            return `Time: ${formatTime(seconds)}`;
           },
           label: (context) => {
             return `${signalId}: ${context.parsed.y.toFixed(1)} ${signal.unit}`;
+          },
+        },
+      },
+      zoom: {
+        pan: {
+          enabled: zoom.scale !== 'full', // Disable panning when Full is selected
+          mode: 'x',
+          onPanComplete: ({ chart }) => {
+            const xScale = chart.scales.x;
+            if (xScale && zoom.scale !== 'full') {
+              const newStartTime = Math.max(0, xScale.min);
+              setSignalZoom(signalId, zoom.scale, newStartTime);
+            }
+          },
+        },
+        zoom: {
+          wheel: {
+            enabled: zoom.scale !== 'full', // Disable wheel zoom when Full is selected
+          },
+          pinch: {
+            enabled: zoom.scale !== 'full', // Disable pinch zoom when Full is selected
+          },
+          mode: 'x',
+          onZoomComplete: ({ chart }) => {
+            const xScale = chart.scales.x;
+            if (xScale && zoom.scale !== 'full') {
+              const newStartTime = Math.max(0, xScale.min);
+              const newEndTime = Math.min(duration, xScale.max);
+              // Auto-detect zoom scale based on time range
+              const timeRange = newEndTime - newStartTime;
+              let newScale: 'full' | '1s' | '30s' | '5m' | '10m' = zoom.scale;
+              if (timeRange <= 2) newScale = '1s';
+              else if (timeRange <= 60) newScale = '30s';
+              else if (timeRange <= 360) newScale = '5m';
+              else if (timeRange <= 720) newScale = '10m';
+              else newScale = 'full';
+              
+              setSignalZoom(signalId, newScale, newStartTime);
+            }
           },
         },
       },
@@ -119,17 +176,18 @@ export function InteractiveSignalChart({ signalId, duration }: InteractiveSignal
         type: 'linear',
         title: {
           display: true,
-          text: 'Time (seconds)',
+          text: 'Time',
         },
-        min: 0,
-        max: duration,
+        min: zoom.startTime,
+        max: zoom.endTime,
+        grid: {
+          display: true,
+        },
         ticks: {
-          stepSize: 300, // 5-minute intervals
+          stepSize: zoom.scale === '1s' ? 0.1 : zoom.scale === '30s' ? 5 : zoom.scale === '5m' ? 30 : zoom.scale === '10m' ? 60 : 300,
           callback: function(value) {
             const seconds = Number(value);
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = seconds % 60;
-            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+            return formatTime(seconds);
           },
         },
       },
@@ -215,6 +273,29 @@ export function InteractiveSignalChart({ signalId, duration }: InteractiveSignal
             {controlPoints.length} control point{controlPoints.length !== 1 ? 's' : ''} • 
             Click to add • Double-click point to delete
           </div>
+          
+          {/* Zoom presets */}
+          <div className="flex items-center gap-1 border rounded px-1">
+            {[
+              { label: '1s', value: '1s' as const },
+              { label: '30s', value: '30s' as const },
+              { label: '5m', value: '5m' as const },
+              { label: '10m', value: '10m' as const },
+              { label: 'Full', value: 'full' as const }
+            ].map(({ label, value }) => (
+              <Button
+                key={value}
+                variant={zoom.scale === value ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setSignalZoom(signalId, value, 0)}
+                className="h-5 px-2 text-xs"
+                title={`Zoom to ${label}`}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          
           <Button
             variant="outline"
             size="sm"
@@ -226,7 +307,8 @@ export function InteractiveSignalChart({ signalId, duration }: InteractiveSignal
           </Button>
         </div>
       </div>
-      <div className="h-48">
+      <div className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'}`} 
+           title={zoom.scale === 'full' ? 'Pan/zoom disabled in Full view' : 'Click and drag to pan, scroll to zoom'}>
         <Line ref={chartRef} data={chartData} options={options} />
       </div>
     </div>
