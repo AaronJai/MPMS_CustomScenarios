@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
+import { useEffect } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -17,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { UQ_HEADERS, DEFAULT_ACTIVE, SIGNALS, SignalKey, REQUIRED_COLUMNS, RequiredColumn } from "@/data/columns"
+import { useScenarioStore } from "@/state/store"
 
 // Create items array from UQ_HEADERS, separating required from optional
 const items = UQ_HEADERS.map((header) => ({
@@ -39,6 +41,8 @@ const FormSchema = z.object({
 })
 
 export function ColumnSelect() {
+  const { setSelectedSignals } = useScenarioStore()
+  
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
@@ -46,7 +50,20 @@ export function ColumnSelect() {
     },
   })
 
+  // Initialize store with default signals on mount
+  useEffect(() => {
+    setSelectedSignals(DEFAULT_ACTIVE)
+  }, [setSelectedSignals])
+
   function onSubmit(data: z.infer<typeof FormSchema>) {
+    // Filter out required columns to get only the signals
+    const selectedSignals = data.selectedColumns.filter(
+      (col): col is SignalKey => !REQUIRED_COLUMNS.includes(col as RequiredColumn)
+    ) as SignalKey[]
+    
+    // Update the store with selected signals
+    setSelectedSignals(selectedSignals)
+    
     toast("CSV Export Started", {
       description: (
         <div className="text-sm">
@@ -61,6 +78,24 @@ export function ColumnSelect() {
     
     // TODO: Implement actual CSV export logic
     console.log("Exporting columns:", data.selectedColumns)
+    console.log("Signal data for export:", selectedSignals)
+  }
+
+  // Update store when form values change (for real-time chart updates)
+  function handleColumnChange(checked: boolean, columnId: string) {
+    const currentValues = form.getValues("selectedColumns")
+    const newValues = checked 
+      ? [...currentValues, columnId]
+      : currentValues.filter(id => id !== columnId)
+    
+    form.setValue("selectedColumns", newValues)
+    
+    // Update store with selected signals (excluding required columns)
+    const selectedSignals = newValues.filter(
+      (col): col is SignalKey => !REQUIRED_COLUMNS.includes(col as RequiredColumn)
+    ) as SignalKey[]
+    
+    setSelectedSignals(selectedSignals)
   }
 
   return (
@@ -105,13 +140,7 @@ export function ColumnSelect() {
                                   disabled={item.isRequired}
                                   onCheckedChange={(checked) => {
                                     if (item.isRequired) return;
-                                    return checked
-                                      ? field.onChange([...field.value, item.id])
-                                      : field.onChange(
-                                          field.value?.filter(
-                                            (value: string) => value !== item.id
-                                          )
-                                        )
+                                    handleColumnChange(!!checked, item.id)
                                   }}
                                 />
                               </FormControl>
