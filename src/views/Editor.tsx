@@ -1,5 +1,5 @@
 import { useScenarioStore } from '@/state/store'
-import { SignalChart } from '@/components/SignalChart'
+import { InteractiveSignalChart } from '@/components/InteractiveSignalChart'
 
 export function Editor() {
   const { signalStates, duration } = useScenarioStore()
@@ -37,16 +37,18 @@ export function Editor() {
             Duration: {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')} • 
             Sample Rate: 1 Hz
           </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Click on charts to add control points • Double-click control points to delete
+          </p>
         </div>
         
         {visibleSignals.map((signalState) => {
           if (!signalState) return null
           
           return (
-            <SignalChart
+            <InteractiveSignalChart
               key={signalState.id}
               signalId={signalState.id}
-              data={signalState.data}
               duration={duration}
             />
           )

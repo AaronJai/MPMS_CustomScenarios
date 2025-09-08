@@ -4,11 +4,13 @@ import { SignalKey, SIGNALS, DEFAULT_TIMING } from '@/data/columns'
 export interface DataPoint {
   x: number; // time in milliseconds
   y: number; // signal value
+  isControlPoint?: boolean; // marks this as a user-editable control point
 }
 
 export interface SignalState {
   id: SignalKey;
   data: DataPoint[];
+  controlPoints: DataPoint[]; // separate array for control points
   isVisible: boolean;
   order: number; // for stacking order
 }
@@ -31,6 +33,13 @@ export interface ScenarioStore {
   toggleSignalVisibility: (signalId: SignalKey) => void;
   setDuration: (seconds: number) => void;
   setSampleRate: (ms: number) => void;
+  
+  // Control point actions
+  addControlPoint: (signalId: SignalKey, point: DataPoint) => void;
+  moveControlPoint: (signalId: SignalKey, pointIndex: number, newPoint: DataPoint) => void;
+  deleteControlPoint: (signalId: SignalKey, pointIndex: number) => void;
+  regenerateSignalFromControlPoints: (signalId: SignalKey) => void;
+  resetSignalToDefault: (signalId: SignalKey) => void;
 }
 
 // Generate baseline data for a signal
@@ -72,6 +81,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
           newStates[signalId] = {
             id: signalId,
             data: generateBaselineData(signalId, get().duration, get().sampleRate),
+            controlPoints: [], // Initialize with empty control points
             isVisible: true,
             order: nextOrder
           };
@@ -107,6 +117,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
         [signalId]: {
           id: signalId,
           data: generateBaselineData(signalId, get().duration, get().sampleRate),
+          controlPoints: [], // Initialize with empty control points
           isVisible: true,
           order: nextOrder
         }
@@ -185,4 +196,189 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     
     set({ signalStates: newStates });
   },
+  
+  // Control point methods
+  addControlPoint: (signalId, point) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState) return;
+    
+    // Constrain the point to signal bounds
+    const signal = SIGNALS[signalId];
+    const constrainedPoint = {
+      ...point,
+      y: Math.max(signal.min, Math.min(signal.max, point.y)),
+      x: Math.max(0, Math.min(get().duration * 1000, point.x)),
+    };
+    
+    // Insert in chronological order
+    const newControlPoints = [...currentState.controlPoints, constrainedPoint]
+      .sort((a, b) => a.x - b.x);
+    
+    const updatedState = {
+      ...currentState,
+      controlPoints: newControlPoints,
+    };
+    
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+    
+    // Regenerate signal data from control points
+    get().regenerateSignalFromControlPoints(signalId);
+  },
+  
+  moveControlPoint: (signalId, pointIndex, newPoint) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState || !currentState.controlPoints[pointIndex]) return;
+    
+    const signal = SIGNALS[signalId];
+    const constrainedPoint = {
+      ...newPoint,
+      y: Math.max(signal.min, Math.min(signal.max, newPoint.y)),
+      x: Math.max(0, Math.min(get().duration * 1000, newPoint.x)),
+    };
+    
+    const newControlPoints = [...currentState.controlPoints];
+    newControlPoints[pointIndex] = constrainedPoint;
+    
+    // Re-sort in chronological order
+    newControlPoints.sort((a, b) => a.x - b.x);
+    
+    const updatedState = {
+      ...currentState,
+      controlPoints: newControlPoints,
+    };
+    
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+    
+    // Regenerate signal data from control points
+    get().regenerateSignalFromControlPoints(signalId);
+  },
+  
+  deleteControlPoint: (signalId, pointIndex) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState || !currentState.controlPoints[pointIndex]) return;
+    
+    const newControlPoints = currentState.controlPoints.filter((_, index) => index !== pointIndex);
+    
+    const updatedState = {
+      ...currentState,
+      controlPoints: newControlPoints,
+    };
+    
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+    
+    // Regenerate signal data from control points
+    get().regenerateSignalFromControlPoints(signalId);
+  },
+  
+  regenerateSignalFromControlPoints: (signalId) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState) return;
+    
+    const signal = SIGNALS[signalId];
+    const { controlPoints } = currentState;
+    const { duration, sampleRate } = get();
+    
+    // Generate interpolated data
+    const samples = Math.floor((duration * 1000) / sampleRate);
+    const newData: DataPoint[] = [];
+    
+    for (let i = 0; i <= samples; i++) {
+      const x = i * sampleRate;
+      let y = signal.def; // Default value
+      
+      if (controlPoints.length === 0) {
+        // No control points - use baseline
+        y = signal.def;
+      } else if (controlPoints.length === 1) {
+        // Single control point - use that value
+        y = controlPoints[0].y;
+      } else {
+        // Multiple control points - interpolate
+        y = interpolateValue(x, controlPoints, signal.def);
+      }
+      
+      newData.push({ x, y });
+    }
+    
+    const updatedState = {
+      ...currentState,
+      data: newData,
+    };
+    
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+  },
+  
+  resetSignalToDefault: (signalId) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState) return;
+    
+    // Clear all control points and regenerate baseline data
+    const updatedState = {
+      ...currentState,
+      controlPoints: [], // Clear all control points
+      data: generateBaselineData(signalId, get().duration, get().sampleRate), // Reset to baseline
+    };
+    
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+  },
 }));
+
+// Helper function for linear interpolation between control points
+function interpolateValue(x: number, controlPoints: DataPoint[], defaultValue: number): number {
+  // Find the two control points that bracket this x value
+  const sortedPoints = [...controlPoints].sort((a, b) => a.x - b.x);
+  
+  // Before first control point
+  if (x <= sortedPoints[0].x) {
+    return sortedPoints[0].y;
+  }
+  
+  // After last control point
+  if (x >= sortedPoints[sortedPoints.length - 1].x) {
+    return sortedPoints[sortedPoints.length - 1].y;
+  }
+  
+  // Between control points - linear interpolation
+  for (let i = 0; i < sortedPoints.length - 1; i++) {
+    const p1 = sortedPoints[i];
+    const p2 = sortedPoints[i + 1];
+    
+    if (x >= p1.x && x <= p2.x) {
+      // Linear interpolation formula
+      const ratio = (x - p1.x) / (p2.x - p1.x);
+      return p1.y + ratio * (p2.y - p1.y);
+    }
+  }
+  
+  return defaultValue;
+}

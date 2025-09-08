@@ -171,11 +171,21 @@ export function ColumnSelect() {
             <Button 
               type="button" 
               variant="outline"
-              onClick={() => form.reset({ selectedColumns: [...REQUIRED_COLUMNS, ...DEFAULT_ACTIVE] })}
+              onClick={() => {
+                const defaultColumns = [...REQUIRED_COLUMNS, ...DEFAULT_ACTIVE];
+                form.reset({ selectedColumns: defaultColumns });
+                
+                // Update store with default signals (excluding required columns)
+                const selectedSignals = defaultColumns.filter(
+                  (col): col is SignalKey => !REQUIRED_COLUMNS.includes(col as RequiredColumn)
+                ) as SignalKey[];
+                
+                setSelectedSignals(selectedSignals);
+              }}
               className="w-full text-xs cursor-pointer"
               size="sm"
             >
-              Reset to Defaults
+              Reset to Default Vitals
             </Button>
             <Button 
               type="submit" 
