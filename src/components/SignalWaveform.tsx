@@ -53,13 +53,10 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
     const remainingSeconds = seconds % 60;
     
     // Format based on zoom level to avoid messy decimals
-    if (zoom.scale === '1s') {
-      // For 1s zoom, show one decimal place
-      return `${minutes}:${remainingSeconds.toFixed(1).padStart(4, '0')}`;
-    } else if (zoom.scale === '30s') {
-      // For 30s zoom, show whole seconds
+    if (zoom.scale === '5s' || zoom.scale === '30s') {
       return `${minutes}:${Math.round(remainingSeconds).toString().padStart(2, '0')}`;
-    } else {
+    } 
+      else {
       // For longer durations, show whole seconds
       return `${minutes}:${Math.round(remainingSeconds).toString().padStart(2, '0')}`;
     }
@@ -158,8 +155,8 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
               const newEndTime = Math.min(duration, xScale.max);
               // Auto-detect zoom scale based on time range
               const timeRange = newEndTime - newStartTime;
-              let newScale: 'full' | '1s' | '30s' | '5m' | '10m' = zoom.scale;
-              if (timeRange <= 2) newScale = '1s';
+              let newScale: 'full' | '5s' | '30s' | '5m' | '10m' = zoom.scale;
+              if (timeRange <= 7) newScale = '5s';
               else if (timeRange <= 60) newScale = '30s';
               else if (timeRange <= 360) newScale = '5m';
               else if (timeRange <= 720) newScale = '10m';
@@ -184,7 +181,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           display: true,
         },
         ticks: {
-          stepSize: zoom.scale === '1s' ? 0.1 : zoom.scale === '30s' ? 5 : zoom.scale === '5m' ? 30 : zoom.scale === '10m' ? 60 : 300,
+          stepSize: zoom.scale === '5s' ? 1 : zoom.scale === '30s' ? 5 : zoom.scale === '5m' ? 30 : zoom.scale === '10m' ? 60 : 300,
           callback: function(value) {
             const seconds = Number(value);
             return formatTime(seconds);
@@ -277,7 +274,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           {/* Zoom presets */}
           <div className="flex items-center gap-1 border rounded px-1">
             {[
-              { label: '1s', value: '1s' as const },
+              { label: '5s', value: '5s' as const },
               { label: '30s', value: '30s' as const },
               { label: '5m', value: '5m' as const },
               { label: '10m', value: '10m' as const },
@@ -307,8 +304,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           </Button>
         </div>
       </div>
-      <div className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'}`} 
-           title={zoom.scale === 'full' ? '' : 'Click and drag to pan, scroll to zoom'}>
+      <div className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'}`}>
         <Line ref={chartRef} data={chartData} options={options} />
       </div>
     </div>

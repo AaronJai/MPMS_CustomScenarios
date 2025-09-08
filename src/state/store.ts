@@ -14,7 +14,7 @@ export interface SignalState {
   isVisible: boolean;
   order: number; // for stacking order
   zoom: {
-    scale: 'full' | '1s' | '30s' | '5m' | '10m'; // zoom preset
+    scale: 'full' | '5s' | '30s' | '5m' | '10m'; // zoom preset
     startTime: number; // start time in seconds for current view
     endTime: number; // end time in seconds for current view
   };
@@ -47,7 +47,7 @@ export interface ScenarioStore {
   resetSignalToDefault: (signalId: SignalKey) => void;
   
   // Zoom actions
-  setSignalZoom: (signalId: SignalKey, scale: 'full' | '1s' | '30s' | '5m' | '10m', startTime?: number) => void;
+  setSignalZoom: (signalId: SignalKey, scale: 'full' | '5s' | '30s' | '5m' | '10m', startTime?: number) => void;
 }
 
 // Generate baseline data for a signal
@@ -381,8 +381,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     
     // Calculate time ranges based on scale
     switch (scale) {
-      case '1s':
-        newEndTime = Math.min(newStartTime + 1, duration);
+      case '5s':
+        newEndTime = Math.min(newStartTime + 5, duration);
         break;
       case '30s':
         newEndTime = Math.min(newStartTime + 30, duration);
@@ -404,7 +404,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     if (newEndTime > duration) {
       newEndTime = duration;
       if (scale !== 'full') {
-        const scaleSeconds = scale === '1s' ? 1 : scale === '30s' ? 30 : scale === '5m' ? 300 : 600;
+        const scaleSeconds = scale === '5s' ? 5 : scale === '30s' ? 30 : scale === '5m' ? 300 : 600;
         newStartTime = Math.max(0, newEndTime - scaleSeconds);
       }
     }
