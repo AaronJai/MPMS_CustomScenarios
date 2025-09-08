@@ -308,7 +308,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         </div>
       </div>
       <div className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'}`} 
-           title={zoom.scale === 'full' ? 'Pan/zoom disabled in Full view' : 'Click and drag to pan, scroll to zoom'}>
+           title={zoom.scale === 'full' ? '' : 'Click and drag to pan, scroll to zoom'}>
         <Line ref={chartRef} data={chartData} options={options} />
       </div>
     </div>
