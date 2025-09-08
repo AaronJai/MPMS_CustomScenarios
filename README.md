@@ -1,30 +1,66 @@
-# React + TypeScript + Vite
+# Scenario Builder MVP (Trend Data Only)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 1. Core Flow
 
-Currently, two official plugins are available:
+1. **Select columns** → choose which vitals to include (HR, SpO₂, etCO₂, RR, etc.).
+    - Defaults: HR=70, SpO₂=98, RR=14, etCO₂=35.
+    - Unused columns remain blank on export.
+2. **Edit signal** → click a column → open its graph.
+    - Show time axis (default 30 min @ 1 Hz).
+    - Drag points to shape the curve.
+    - Zoom presets: 1s, 30s, 5m, 10m.
+3. **Preview** → stacked mini-charts of other signals.
+    - Clicking swaps which one is editable.
+4. **Export** → generate CSV/XLSX with the exact UQ headers.
+    - Only selected signals filled, others empty.
+    - Validates time monotonic + simple ranges.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## Expanding the ESLint configuration
+## 2. Screens (~3 total)
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+1. **Home**
+    - New Scenario / Open / Export.
+2. **Column Picker**
+    - Checklist of available UQ columns.
+    - Defaults applied automatically.
+3. **Editor**
+    - One large graph (active signal).
+    - Drag points, add/remove with click.
+    - Zoom + pan.
+    - Mini-charts below for quick switching.
 
-- Configure the top-level `parserOptions` property like this:
+---
 
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+## 3. Must-have Features
+
+- Column selection with sensible defaults.
+- Graph editor (drag points, linear interpolation).
+- Time axis scroll/zoom.
+- Export to Excel/CSV matching UQ format.
+- Basic validation (time, value ranges).
+
+## Minimal File Hierarchy
+```plaintext
+src/
+├── App.tsx                 # tiny router/switch between ColumnSelect and Editor
+├── main.tsx                # React entry
+├── styles.css              # one stylesheet for now
+│
+├── data/
+│   └── columns.ts          # STATIC UQ headers + units + min/max + defaults
+│
+├── state/
+│   └── store.ts            # single Zustand store (selected columns, points, duration, sampleRate)
+│
+├── views/
+│   ├── ColumnSelect.tsx    # checklist UI (choose signals), apply defaults
+│   └── Editor.tsx          # one big chart + zoom + add/move/delete points
+│
+├── components/
+│   ├── Graph.tsx           # the editable line chart (draggable control points)
+│   └── Toolbar.tsx         # zoom presets, export button
+│
+├── export.ts               # make CSV/XLSX with exact UQ headers
+└── validate.ts             # simple guards (monotonic time, value ranges)
 ```
-
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list

@@ -1,12 +1,11 @@
-import { Button } from './components/ui/button'
+import { ColumnSelect } from './views/ColumnSelect'
 
 function App() {
 
   return (
     <>
     
-    <p>hello</p>
-    <Button>Click me</Button>
+      <ColumnSelect />
     </>
   )
 }
