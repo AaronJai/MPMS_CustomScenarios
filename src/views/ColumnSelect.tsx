@@ -47,44 +47,46 @@ export function ColumnSelect() {
   })
 
   function onSubmit(data: z.infer<typeof FormSchema>) {
-    toast("Selected signals updated", {
+    toast("CSV Export Started", {
       description: (
-        <pre className="mt-2 w-[320px] rounded-md bg-neutral-950 p-4">
-          <code className="text-white">{JSON.stringify(data.selectedColumns, null, 2)}</code>
-        </pre>
+        <div className="text-sm">
+          <p>Exporting {data.selectedColumns.length} columns:</p>
+          <p className="text-gray-500 mt-1">
+            {data.selectedColumns.slice(0, 3).join(", ")}
+            {data.selectedColumns.length > 3 && ` +${data.selectedColumns.length - 3} more...`}
+          </p>
+        </div>
       ),
     })
     
-    // TODO: Save to scenario state/store
-    console.log("Selected columns:", data.selectedColumns)
+    // TODO: Implement actual CSV export logic
+    console.log("Exporting columns:", data.selectedColumns)
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Select Signal Columns</h1>
-        <p className="text-gray-600">
-          Choose which vital signs and measurements to include in your scenario.
+    <div className="h-full flex flex-col">
+      <div className="p-4 border-b">
+        <h2 className="text-lg font-semibold mb-2">Signal Selection</h2>
+        <p className="text-sm text-gray-600">
+          Choose signals to include in your scenario.
         </p>
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 flex flex-col">
           <FormField
             control={form.control}
             name="selectedColumns"
             render={() => (
-              <FormItem>
-                <div className="mb-4">
-                  <FormLabel className="text-base font-semibold">Available Signals</FormLabel>
-                  <FormDescription>
-                    Select the signals you want to edit and include in your scenario. 
-                    Time-related columns (Time, RelativeTimeMilliseconds, Clock) are always required.
+              <FormItem className="flex-1 flex flex-col">
+                <div className="px-4 py-3 border-b">
+                  <FormDescription className="text-xs">
+                    Time columns are always required. Select additional vital signs to edit.
                   </FormDescription>
                 </div>
                 
-                <div className="max-h-96 overflow-y-auto border rounded-md p-4">
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="flex-1 overflow-y-auto px-4 py-2">
+                  <div className="space-y-2">
                     {items.map((item) => (
                       <FormField
                         key={item.id}
@@ -98,11 +100,11 @@ export function ColumnSelect() {
                             >
                               <FormControl>
                                 <Checkbox
-                                  className="w-5 h-5"
+                                  className="w-4 h-4"
                                   checked={field.value?.includes(item.id)}
                                   disabled={item.isRequired}
                                   onCheckedChange={(checked) => {
-                                    if (item.isRequired) return; // Prevent unchecking required items
+                                    if (item.isRequired) return;
                                     return checked
                                       ? field.onChange([...field.value, item.id])
                                       : field.onChange(
@@ -113,14 +115,14 @@ export function ColumnSelect() {
                                   }}
                                 />
                               </FormControl>
-                              <div className="space-y-1 leading-none">
-                                <FormLabel className={`text-sm font-normal cursor-pointer ${item.isRequired ? 'text-gray-600 italic' : ''}`}>
+                              <div className="flex-1 min-w-0">
+                                <FormLabel className={`text-xs font-normal cursor-pointer block truncate ${item.isRequired ? 'text-gray-600 italic' : ''}`}>
                                   {item.label}
                                   {item.unit && (
                                     <span className="text-gray-500 ml-1">({item.unit})</span>
                                   )}
                                   {item.isRequired && (
-                                    <span className="text-xs text-gray-400 ml-2">(Required)</span>
+                                    <span className="text-xs text-gray-400 block">(Required)</span>
                                   )}
                                 </FormLabel>
                               </div>
@@ -131,22 +133,28 @@ export function ColumnSelect() {
                     ))}
                   </div>
                 </div>
-                <FormMessage />
+                <FormMessage className="px-4" />
               </FormItem>
             )}
           />
           
-          <div className="flex gap-3">
-            <Button type="submit" className="flex-1 cursor-pointer">
-              Continue to Editor
-            </Button>
+          <div className="p-4 border-t space-y-2">
             <Button 
               type="button" 
               variant="outline"
               onClick={() => form.reset({ selectedColumns: [...REQUIRED_COLUMNS, ...DEFAULT_ACTIVE] })}
-              className="cursor-pointer"
+              className="w-full text-xs cursor-pointer"
+              size="sm"
             >
               Reset to Defaults
+            </Button>
+            <Button 
+              type="submit" 
+              variant="default"
+              className="w-full text-xs cursor-pointer"
+              size="sm"
+            >
+              Export CSV
             </Button>
           </div>
         </form>
