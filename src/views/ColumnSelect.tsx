@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/form"
 import { UQ_HEADERS, DEFAULT_ACTIVE, SIGNALS, SignalKey, REQUIRED_COLUMNS, RequiredColumn } from "@/data/columns"
 import { useScenarioStore } from "@/state/store"
+import { toCsv, downloadCsv } from "@/lib/csv"
 
 // Create items array from UQ_HEADERS, separating required from optional
 const items = UQ_HEADERS.map((header) => ({
@@ -41,7 +42,7 @@ const FormSchema = z.object({
 })
 
 export function ColumnSelect() {
-  const { setSelectedSignals } = useScenarioStore()
+  const { setSelectedSignals, exportRows } = useScenarioStore()
   
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -64,21 +65,28 @@ export function ColumnSelect() {
     // Update the store with selected signals
     setSelectedSignals(selectedSignals)
     
-    toast("CSV Export Started", {
+    // Ensure columns are in UQ_HEADERS order (not form selection order)
+    const orderedColumns = UQ_HEADERS.filter(header => data.selectedColumns.includes(header))
+    
+    // Generate CSV data using UQ_HEADERS order
+    const rows = exportRows(orderedColumns)
+    const csvContent = toCsv(orderedColumns, rows)
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0]
+    const filename = `scenario_${timestamp}.csv`
+    
+    // Download the CSV
+    downloadCsv(csvContent, filename)
+    
+    toast("CSV Export Complete", {
       description: (
         <div className="text-sm">
-          <p>Exporting {data.selectedColumns.length} columns:</p>
-          <p className="text-gray-500 mt-1">
-            {data.selectedColumns.slice(0, 3).join(", ")}
-            {data.selectedColumns.length > 3 && ` +${data.selectedColumns.length - 3} more...`}
-          </p>
+          <p>Exported {orderedColumns.length} columns, {rows.length} rows</p>
+          <p className="text-gray-500 mt-1">Downloaded as: {filename}</p>
         </div>
       ),
     })
-    
-    // TODO: Implement actual CSV export logic
-    console.log("Exporting columns:", data.selectedColumns)
-    console.log("Signal data for export:", selectedSignals)
   }
 
   // Update store when form values change (for real-time chart updates)

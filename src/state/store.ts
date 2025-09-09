@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { SignalKey, SIGNALS, DEFAULT_TIMING } from '@/data/columns'
+import { SignalKey, SIGNALS, DEFAULT_TIMING, formatTime, formatClock } from '@/data/columns'
+import { formatSignalValue } from '@/lib/csv'
 
 export interface DataPoint {
   x: number; // time in milliseconds
@@ -48,6 +49,9 @@ export interface ScenarioStore {
   
   // Zoom actions
   setSignalZoom: (signalId: SignalKey, scale: 'full' | '5s' | '30s' | '5m' | '10m', startTime?: number) => void;
+  
+  // Export actions
+  exportRows: (selectedColumns: string[]) => Record<string, string | number | null | undefined>[];
 }
 
 // Generate baseline data for a signal
@@ -424,6 +428,52 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
         [signalId]: updatedState
       }
     });
+  },
+  
+  exportRows: (selectedColumns) => {
+    const { duration, sampleRate, signalStates } = get();
+    const samples = Math.floor((duration * 1000) / sampleRate);
+    const rows: Record<string, string | number | null | undefined>[] = [];
+    
+    for (let i = 0; i <= samples; i++) {
+      const milliseconds = i * sampleRate;
+      const row: Record<string, string | number | null | undefined> = {};
+      
+      // Process each selected column
+      selectedColumns.forEach(columnId => {
+        if (columnId === 'Time') {
+          row[columnId] = formatTime(milliseconds);
+        } else if (columnId === 'RelativeTimeMilliseconds') {
+          row[columnId] = milliseconds;
+        } else if (columnId === 'Clock') {
+          row[columnId] = formatClock(DEFAULT_TIMING.startTime, milliseconds);
+        } else {
+          // This is a signal column
+          const signalState = signalStates[columnId as SignalKey];
+          if (signalState && signalState.isVisible) {
+            // Find the data point for this time
+            const dataPoint = signalState.data.find(point => point.x === milliseconds);
+            if (dataPoint) {
+              // Clamp value to signal bounds and format
+              const signal = SIGNALS[columnId as SignalKey];
+              const clampedValue = Math.max(signal.min, Math.min(signal.max, dataPoint.y));
+              
+              // Format according to signal type
+              row[columnId] = formatSignalValue(clampedValue, columnId);
+            } else {
+              row[columnId] = null; // No data for this time point
+            }
+          } else {
+            // Signal not active - leave as empty
+            row[columnId] = null;
+          }
+        }
+      });
+      
+      rows.push(row);
+    }
+    
+    return rows;
   },
 }));
 
