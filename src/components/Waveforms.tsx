@@ -358,9 +358,9 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           <div className="text-xs text-gray-500">
             {controlPoints.length} control point{controlPoints.length !== 1 ? 's' : ''} • 
             {isDeleteMode ? (
-              <>Hold Ctrl/Cmd: Click point to delete • Z to undo • Y to redo</>
+              <> Click point to delete • 'Z' to undo • 'Y' to redo</>
             ) : (
-              <>Click to add • Ctrl/Cmd+Click to delete • Ctrl/Cmd+Z to undo • Ctrl/Cmd+Y to redo</>
+              <> Click to add • Hold Ctrl/Cmd for delete options</>
             )}
           </div>
           
