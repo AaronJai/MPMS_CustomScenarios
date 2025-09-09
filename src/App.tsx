@@ -1,6 +1,6 @@
 import { SidebarProvider, SidebarTrigger, SidebarInset } from './components/ui/sidebar'
 import { AppSidebar } from './components/AppSidebar'
-import { Editor } from './views/Editor'
+import { WaveformEditor } from './views/WaveformEditor'
 
 function App() {
   return (
@@ -12,7 +12,7 @@ function App() {
           <h1 className="text-xl font-semibold">Scenario Editor</h1>
         </header>
         <div className="flex-1">
-          <Editor />
+          <WaveformEditor />
         </div>
       </SidebarInset>
     </SidebarProvider>

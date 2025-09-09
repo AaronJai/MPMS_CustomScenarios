@@ -116,6 +116,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
       },
       tooltip: {
         enabled: true,
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
         filter: (tooltipItem) => tooltipItem.datasetIndex === 0, // Only show tooltip for main line
         callbacks: {
           title: (context) => {

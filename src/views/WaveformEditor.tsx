@@ -1,7 +1,7 @@
 import { useScenarioStore } from '@/state/store'
-import { SignalWaveform } from '@/components/SignalWaveform'
+import { SignalWaveform } from '@/components/Waveforms'
 
-export function Editor() {
+export function WaveformEditor() {
   const { signalStates, duration } = useScenarioStore()
   
   // Get visible signals sorted by order

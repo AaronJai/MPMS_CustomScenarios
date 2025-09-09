@@ -122,9 +122,9 @@ export interface SignalMeta {
 // Reasonable adult OR defaults (generic, non-patient-specific)
 export const SIGNALS: Record<SignalKey, SignalMeta> = {
   // Cardio / Oximetry
-  HR:           { unit: "bpm",   min: 0,   max: 220, def: 70,  step: 1, softLow: 60, softHigh: 80 },
+  HR:           { unit: "bpm",   min: 0,   max: 120, def: 60,  step: 1, softLow: 50, softHigh: 75 },
   "ST-II":      { unit: "mm",    min: -5,  max: 5,   def: 0,   step: 0.5 }, // ECG ST-segment deviation
-  Pulse:        { unit: "bpm",   min: 0,   max: 220, def: 70,  step: 1 },   // typically mirrors HR
+  Pulse:        { unit: "bpm",   min: 0,   max: 120, def: 60,  step: 1 },   // typically mirrors HR
   SpO2:         { unit: "%",     min: 50,  max: 100, def: 98,  step: 1, softLow: 96, softHigh: 100 },
   Perf:         { unit: "%PI",   min: 0,   max: 20,  def: 5,   step: 0.1 }, // perfusion index (device-relative)
 
