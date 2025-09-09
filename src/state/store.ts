@@ -6,12 +6,15 @@ export interface DataPoint {
   x: number; // time in milliseconds
   y: number; // signal value
   isControlPoint?: boolean; // marks this as a user-editable control point
+  createdAt?: number; // timestamp when created for proper undo order
 }
 
 export interface SignalState {
   id: SignalKey;
   data: DataPoint[];
   controlPoints: DataPoint[]; // separate array for control points
+  undoHistory: DataPoint[][]; // history of control point states for undo
+  redoHistory: DataPoint[][]; // history of control point states for redo
   isVisible: boolean;
   order: number; // for stacking order
   zoom: {
@@ -44,6 +47,8 @@ export interface ScenarioStore {
   addControlPoint: (signalId: SignalKey, point: DataPoint) => void;
   moveControlPoint: (signalId: SignalKey, pointIndex: number, newPoint: DataPoint) => void;
   deleteControlPoint: (signalId: SignalKey, pointIndex: number) => void;
+  undoLastControlPoint: (signalId: SignalKey) => void;
+  redoLastControlPoint: (signalId: SignalKey) => void;
   regenerateSignalFromControlPoints: (signalId: SignalKey) => void;
   resetSignalToDefault: (signalId: SignalKey) => void;
   
@@ -94,6 +99,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
             id: signalId,
             data: generateBaselineData(signalId, get().duration, get().sampleRate),
             controlPoints: [], // Initialize with empty control points
+            undoHistory: [], // Initialize with empty undo history
+            redoHistory: [], // Initialize with empty redo history
             isVisible: true,
             order: nextOrder,
             zoom: {
@@ -135,6 +142,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
           id: signalId,
           data: generateBaselineData(signalId, get().duration, get().sampleRate),
           controlPoints: [], // Initialize with empty control points
+          undoHistory: [], // Initialize with empty undo history
+          redoHistory: [], // Initialize with empty redo history
           isVisible: true,
           order: nextOrder,
           zoom: {
@@ -224,31 +233,44 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     const states = get().signalStates;
     const currentState = states[signalId];
     if (!currentState) return;
-    
-    // Constrain the point to signal bounds
+
+    // Save current state to undo history before making changes
+    const undoHistory = [...currentState.undoHistory, [...currentState.controlPoints]];
+    // Clear redo history when a new action is performed
+    const redoHistory: DataPoint[][] = [];
+
+    // Keep only last 50 undo steps to prevent memory issues
+    if (undoHistory.length > 50) {
+      undoHistory.shift();
+    }
+
+    // Constrain the point to signal bounds and add creation timestamp
     const signal = SIGNALS[signalId];
     const constrainedPoint = {
       ...point,
       y: Math.max(signal.min, Math.min(signal.max, point.y)),
       x: Math.max(0, Math.min(get().duration * 1000, point.x)),
+      createdAt: Date.now(), // Add timestamp for proper undo order
     };
-    
+
     // Insert in chronological order
     const newControlPoints = [...currentState.controlPoints, constrainedPoint]
       .sort((a, b) => a.x - b.x);
-    
+
     const updatedState = {
       ...currentState,
       controlPoints: newControlPoints,
+      undoHistory,
+      redoHistory,
     };
-    
+
     set({
       signalStates: {
         ...states,
         [signalId]: updatedState
       }
     });
-    
+
     // Regenerate signal data from control points
     get().regenerateSignalFromControlPoints(signalId);
   },
@@ -291,21 +313,93 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     const states = get().signalStates;
     const currentState = states[signalId];
     if (!currentState || !currentState.controlPoints[pointIndex]) return;
-    
+
+    // Save current state to undo history before making changes
+    const undoHistory = [...currentState.undoHistory, [...currentState.controlPoints]];
+    // Clear redo history when a new action is performed
+    const redoHistory: DataPoint[][] = [];
+
+    // Keep only last 50 undo steps to prevent memory issues
+    if (undoHistory.length > 50) {
+      undoHistory.shift();
+    }
+
     const newControlPoints = currentState.controlPoints.filter((_, index) => index !== pointIndex);
-    
+
     const updatedState = {
       ...currentState,
       controlPoints: newControlPoints,
+      undoHistory,
+      redoHistory,
     };
-    
+
     set({
       signalStates: {
         ...states,
         [signalId]: updatedState
       }
     });
+
+    // Regenerate signal data from control points
+    get().regenerateSignalFromControlPoints(signalId);
+  },
+  
+  undoLastControlPoint: (signalId) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState || currentState.undoHistory.length === 0) return;
+
+    // Get the last state from undo history
+    const undoHistory = [...currentState.undoHistory];
+    const previousState = undoHistory.pop()!;
     
+    // Save current state to redo history
+    const redoHistory = [...currentState.redoHistory, [...currentState.controlPoints]];
+
+    const updatedState = {
+      ...currentState,
+      controlPoints: previousState,
+      undoHistory,
+      redoHistory,
+    };
+
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+
+    // Regenerate signal data from control points
+    get().regenerateSignalFromControlPoints(signalId);
+  },
+
+  redoLastControlPoint: (signalId) => {
+    const states = get().signalStates;
+    const currentState = states[signalId];
+    if (!currentState || currentState.redoHistory.length === 0) return;
+
+    // Get the last state from redo history
+    const redoHistory = [...currentState.redoHistory];
+    const nextState = redoHistory.pop()!;
+    
+    // Save current state to undo history
+    const undoHistory = [...currentState.undoHistory, [...currentState.controlPoints]];
+
+    const updatedState = {
+      ...currentState,
+      controlPoints: nextState,
+      undoHistory,
+      redoHistory,
+    };
+
+    set({
+      signalStates: {
+        ...states,
+        [signalId]: updatedState
+      }
+    });
+
     // Regenerate signal data from control points
     get().regenerateSignalFromControlPoints(signalId);
   },

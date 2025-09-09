@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -36,10 +36,51 @@ interface SignalWaveformProps {
 
 export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   const chartRef = useRef<ChartJS<'line'>>(null);
-  const { signalStates, addControlPoint, deleteControlPoint, resetSignalToDefault, setSignalZoom } = useScenarioStore();
+  const { signalStates, addControlPoint, deleteControlPoint, undoLastControlPoint, redoLastControlPoint, resetSignalToDefault, setSignalZoom } = useScenarioStore();
+  
+  // State for modifier key deletion mode
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [isChartFocused, setIsChartFocused] = useState(false);
   
   const signal = SIGNALS[signalId];
   const signalState = signalStates[signalId];
+  
+  // Handle keyboard events for modifier keys and undo/redo
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!isChartFocused) return;
+    
+    // Check for Ctrl/Cmd key
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        undoLastControlPoint(signalId);
+        return;
+      }
+      if (event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoLastControlPoint(signalId);
+        return;
+      }
+      setIsDeleteMode(true);
+    }
+  }, [isChartFocused, signalId, undoLastControlPoint, redoLastControlPoint]);
+  
+  const handleKeyUp = useCallback((event: KeyboardEvent) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      setIsDeleteMode(false);
+    }
+  }, []);
+  
+  // Set up global keyboard event listeners
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
   
   if (!signal || !signalState) {
     return <div>Signal not found: {signalId}</div>;
@@ -87,11 +128,12 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           x: Math.floor(point.x / 1000), // Convert ms to seconds
           y: point.y
         })),
-        borderColor: 'rgba(255, 0, 0, 0.8)',
-        backgroundColor: 'rgba(255, 0, 0, 0.6)',
-        borderWidth: 2,
-        pointRadius: 6,
-        pointHoverRadius: 8,
+        borderColor: isDeleteMode ? 'rgba(255, 100, 100, 1)' : 'rgba(255, 0, 0, 0.8)',
+        backgroundColor: isDeleteMode ? 'rgba(255, 100, 100, 0.8)' : 'rgba(255, 0, 0, 0.6)',
+        borderWidth: isDeleteMode ? 3 : 2,
+        pointRadius: isDeleteMode ? 9 : 7,
+        pointHoverRadius: isDeleteMode ? 13 : 10,
+        pointHitRadius: isDeleteMode ? 25 : 12,
         showLine: false, // Only show points, not connecting lines
         order: 1, // In front of signal line
       },
@@ -116,7 +158,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
       },
       tooltip: {
         enabled: true,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
         filter: (tooltipItem) => tooltipItem.datasetIndex === 0, // Only show tooltip for main line
         callbacks: {
           title: (context) => {
@@ -213,11 +255,39 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
     // Enable dragging and clicking
     onHover: (_, elements) => {
       if (chartRef.current) {
-        chartRef.current.canvas.style.cursor = elements.length > 0 ? 'pointer' : 'crosshair';
+        if (isDeleteMode) {
+          // In delete mode, show normal pointer cursor
+          chartRef.current.canvas.style.cursor = elements.length > 0 ? 'pointer' : 'crosshair';
+        }
       }
     },
     onClick: handleChartClick,
   };
+
+  // Helper function to snap time to grid based on zoom scale
+  function snapTimeToGrid(timeSeconds: number, zoomScale: string): number {
+    let snapInterval: number;
+    
+    switch (zoomScale) {
+      case '5s':
+        snapInterval = 0.5; // Snap to half-second intervals for 5s view
+        break;
+      case '30s':
+        snapInterval = 1; // Snap to 1-second intervals for 30s view
+        break;
+      case '5m':
+        snapInterval = 5; // Snap to 5-second intervals for 5m view
+        break;
+      case '10m':
+        snapInterval = 10; // Snap to 10-second intervals for 10m view
+        break;
+      default: // 'full'
+        snapInterval = 5; // Snap to 5-second intervals for full view
+        break;
+    }
+    
+    return Math.round(timeSeconds / snapInterval) * snapInterval;
+  }
 
   // Handle chart clicks
   function handleChartClick(event: ChartEvent, chartElements: ActiveElement[]) {
@@ -230,18 +300,28 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
       
       // Check if clicking on a control point (dataset index 1)
       if (element.datasetIndex === 1) {
-        // Double click to delete, single click to select for dragging
         const pointIndex = element.index;
         
-        // For now, we'll delete on click. Later we can add drag functionality
-        if (nativeEvent.detail === 2) { // Double click
+        if (isDeleteMode) {
+          // In delete mode, single click deletes immediately
           deleteControlPoint(signalId, pointIndex);
+        } else {
+          // Normal mode: keep double-click deletion for backwards compatibility
+          if (nativeEvent.detail === 2) { // Double click
+            deleteControlPoint(signalId, pointIndex);
+          }
         }
         return;
       }
     }
     
-    // Click on empty space - add new control point
+    // Click on empty space
+    if (isDeleteMode) {
+      // In delete mode, clicking empty space does nothing
+      return;
+    }
+    
+    // Normal mode: add new control point
     const chart = chartRef.current;
     const rect = chart.canvas.getBoundingClientRect();
     const x = nativeEvent.clientX - rect.left;
@@ -251,9 +331,12 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
     const dataY = chart.scales.y.getValueForPixel(y);
     
     if (dataX !== undefined && dataY !== undefined) {
+      // Snap the time to appropriate grid intervals based on zoom scale
+      const snappedTimeSeconds = snapTimeToGrid(dataX, zoom.scale);
+      
       // Convert seconds back to milliseconds for storage
       const newPoint: DataPoint = {
-        x: dataX * 1000,
+        x: snappedTimeSeconds * 1000,
         y: dataY,
         isControlPoint: true
       };
@@ -263,13 +346,22 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   }
 
   return (
-    <div className="bg-white border rounded-lg p-4 mb-4">
+    <div className={`bg-white border rounded-lg p-4 mb-4 ${isDeleteMode ? 'border-red-300 bg-red-50' : ''}`}>
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-sm font-medium">{signalId} ({signal.unit})</h3>
         <div className="flex items-center gap-2">
+          {isDeleteMode && (
+            <div className="text-xs text-red-600 font-medium bg-red-100 px-2 py-1 rounded">
+              DELETE MODE
+            </div>
+          )}
           <div className="text-xs text-gray-500">
             {controlPoints.length} control point{controlPoints.length !== 1 ? 's' : ''} • 
-            Click to add • Double-click point to delete
+            {isDeleteMode ? (
+              <>Hold Ctrl/Cmd: Click point to delete • Z to undo • Y to redo</>
+            ) : (
+              <>Click to add • Ctrl/Cmd+Click to delete • Ctrl/Cmd+Z to undo • Ctrl/Cmd+Y to redo</>
+            )}
           </div>
           
           {/* Zoom presets */}
@@ -305,7 +397,15 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           </Button>
         </div>
       </div>
-      <div className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'}`}>
+      <div 
+        className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'} ${isDeleteMode ? 'ring-2 ring-red-300' : ''}`}
+        tabIndex={0}
+        onFocus={() => setIsChartFocused(true)}
+        onBlur={() => setIsChartFocused(false)}
+        onMouseEnter={() => setIsChartFocused(true)}
+        onMouseLeave={() => setIsChartFocused(false)}
+        style={{ outline: 'none' }}
+      >
         <Line ref={chartRef} data={chartData} options={options} />
       </div>
     </div>
