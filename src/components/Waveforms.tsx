@@ -374,10 +374,37 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
               { label: 'Full', value: 'full' as const }
             ].map(({ label, value }) => (
               <Button
-                key={value}
                 variant={zoom.scale === value ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setSignalZoom(signalId, value, 0)}
+                onClick={() => {
+                  // Calculate current viewport center
+                  const currentCenter = (zoom.startTime + zoom.endTime) / 2;
+                  
+                  // Calculate new start time centered on current view
+                  let newStartTime: number;
+                  if (value === 'full') {
+                    newStartTime = 0;
+                  } else {
+                    // Get duration for the new zoom scale
+                    const scaleDurations = {
+                      '5s': 5,
+                      '30s': 30,
+                      '5m': 300,
+                      '10m': 600
+                    };
+                    const newDuration = scaleDurations[value];
+                    
+                    // Center the new window on current center
+                    newStartTime = Math.max(0, currentCenter - (newDuration / 2));
+                    
+                    // Ensure we don't go beyond the total duration
+                    if (newStartTime + newDuration > duration) {
+                      newStartTime = Math.max(0, duration - newDuration);
+                    }
+                  }
+                  
+                  setSignalZoom(signalId, value, newStartTime);
+                }}
                 className="h-5 px-2 text-xs"
                 title={`Zoom to ${label}`}
               >
