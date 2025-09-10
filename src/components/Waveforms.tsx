@@ -203,7 +203,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
               // Auto-detect zoom scale based on time range
               const timeRange = newEndTime - newStartTime;
               let newScale: 'full' | '5s' | '30s' | '5m' | '10m' = zoom.scale;
-              if (timeRange <= 7) newScale = '5s';
+              if (timeRange <= 4) newScale = '5s';
               else if (timeRange <= 60) newScale = '30s';
               else if (timeRange <= 360) newScale = '5m';
               else if (timeRange <= 720) newScale = '10m';
