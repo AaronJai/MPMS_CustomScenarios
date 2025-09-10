@@ -90,17 +90,11 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
 
   // Helper function for consistent time formatting
   const formatTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
+    const totalSeconds = Math.round(seconds);
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
     
-    // Format based on zoom level to avoid messy decimals
-    if (zoom.scale === '5s' || zoom.scale === '30s') {
-      return `${minutes}:${Math.round(remainingSeconds).toString().padStart(2, '0')}`;
-    } 
-      else {
-      // For longer durations, show whole seconds
-      return `${minutes}:${Math.round(remainingSeconds).toString().padStart(2, '0')}`;
-    }
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   // Convert data to Chart.js format
@@ -110,7 +104,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
       {
         label: `${signalId} (${signal.unit})`,
         data: data.map(point => ({
-          x: Math.floor(point.x / 1000), // Convert ms to seconds
+          x: point.x / 1000, // Convert ms to seconds - keep decimal precision
           y: point.y
         })),
         borderColor: getSignalColor(signalId),
@@ -125,7 +119,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
       {
         label: 'Control Points',
         data: controlPoints.map(point => ({
-          x: Math.floor(point.x / 1000), // Convert ms to seconds
+          x: point.x / 1000, // Convert ms to seconds - keep decimal precision
           y: point.y
         })),
         borderColor: isDeleteMode ? 'rgba(255, 100, 100, 1)' : 'rgba(255, 0, 0, 0.8)',
@@ -133,7 +127,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         borderWidth: isDeleteMode ? 3 : 2,
         pointRadius: isDeleteMode ? 9 : 7,
         pointHoverRadius: isDeleteMode ? 13 : 10,
-        pointHitRadius: isDeleteMode ? 25 : 12,
+        pointHitRadius: isDeleteMode ? 20 : 12,
         showLine: false, // Only show points, not connecting lines
         order: 1, // In front of signal line
       },
