@@ -480,7 +480,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     // Calculate time ranges based on scale
     switch (scale) {
       case '5s':
-        newEndTime = Math.min(newStartTime + 5, duration);
+        newEndTime = Math.min(newStartTime + 4, duration);
         break;
       case '30s':
         newEndTime = Math.min(newStartTime + 30, duration);

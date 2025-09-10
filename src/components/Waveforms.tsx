@@ -264,19 +264,19 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
     
     switch (zoomScale) {
       case '5s':
-        snapInterval = 0.5; // Snap to half-second intervals for 5s view
+        snapInterval = 1;
         break;
       case '30s':
-        snapInterval = 1; // Snap to 1-second intervals for 30s view
+        snapInterval = 5;
         break;
       case '5m':
-        snapInterval = 5; // Snap to 5-second intervals for 5m view
+        snapInterval = 30;
         break;
       case '10m':
-        snapInterval = 10; // Snap to 10-second intervals for 10m view
+        snapInterval = 60;
         break;
       default: // 'full'
-        snapInterval = 5; // Snap to 5-second intervals for full view
+        snapInterval = 60;
         break;
     }
     
@@ -381,7 +381,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
                   } else {
                     // Get duration for the new zoom scale
                     const scaleDurations = {
-                      '5s': 5,
+                      '5s': 4,
                       '30s': 30,
                       '5m': 300,
                       '10m': 600
