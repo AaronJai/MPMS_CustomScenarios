@@ -89,12 +89,22 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   const { data, controlPoints, zoom } = signalState;
 
   // Helper function for consistent time formatting
-  const formatTime = (seconds: number): string => {
-    const totalSeconds = Math.round(seconds);
-    const minutes = Math.floor(totalSeconds / 60);
-    const remainingSeconds = totalSeconds % 60;
-    
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  const formatTime = (seconds: number, zoomScale?: string): string => {
+    // For fine zoom levels, show decimal precision
+    if (zoomScale === '5s' || zoomScale === '30s') {
+      const totalSeconds = Math.round(seconds * 10) / 10; // Round to 1 decimal place
+      const minutes = Math.floor(totalSeconds / 60);
+      const remainingSeconds = totalSeconds % 60;
+      
+      return `${minutes}:${remainingSeconds.toFixed(1).padStart(4, '0')}`;
+    } else {
+      // For other zoom levels, use whole seconds
+      const totalSeconds = Math.round(seconds);
+      const minutes = Math.floor(totalSeconds / 60);
+      const remainingSeconds = totalSeconds % 60;
+      
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
   };
 
   // Convert data to Chart.js format
@@ -158,7 +168,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           title: (context) => {
             const seconds = context[0]?.parsed?.x;
             if (typeof seconds !== 'number') return '';
-            return `Time: ${formatTime(seconds)}`;
+            return `Time: ${formatTime(seconds, zoom.scale)}`;
           },
           label: (context) => {
             return `${signalId}: ${context.parsed.y.toFixed(1)} ${signal.unit}`;
@@ -221,7 +231,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           stepSize: zoom.scale === '5s' ? 1 : zoom.scale === '30s' ? 5 : zoom.scale === '5m' ? 30 : zoom.scale === '10m' ? 60 : 300,
           callback: function(value) {
             const seconds = Number(value);
-            return formatTime(seconds);
+            return formatTime(seconds, zoom.scale);
           },
         },
       },
