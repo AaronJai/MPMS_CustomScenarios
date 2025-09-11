@@ -429,7 +429,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         </div>
       </div>
       <div 
-        className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-grab'} ${isDeleteMode ? 'ring-2 ring-red-300' : ''}`}
+        className={`h-48 ${zoom.scale === 'full' ? 'cursor-default' : 'cursor-pointer'} ${isDeleteMode ? 'ring-2 ring-red-300' : ''}`}
         tabIndex={0}
         onFocus={() => setIsChartFocused(true)}
         onBlur={() => setIsChartFocused(false)}
