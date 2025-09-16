@@ -5,23 +5,13 @@ import { formatSignalValue } from '@/lib/csv'
 export interface DataPoint {
   x: number; // time in milliseconds
   y: number; // signal value
-  isControlPoint?: boolean; // marks this as a user-editable control point
-  createdAt?: number; // timestamp when created for proper undo order
 }
 
 export interface SignalState {
   id: SignalKey;
   data: DataPoint[];
-  controlPoints: DataPoint[]; // separate array for control points
-  undoHistory: DataPoint[][]; // history of control point states for undo
-  redoHistory: DataPoint[][]; // history of control point states for redo
   isVisible: boolean;
   order: number; // for stacking order
-  zoom: {
-    scale: 'full' | '5s' | '30s' | '5m' | '10m'; // zoom preset
-    startTime: number; // start time in seconds for current view
-    endTime: number; // end time in seconds for current view
-  };
 }
 
 export interface ScenarioStore {
@@ -43,17 +33,8 @@ export interface ScenarioStore {
   setDuration: (seconds: number) => void;
   setSampleRate: (ms: number) => void;
   
-  // Control point actions
-  addControlPoint: (signalId: SignalKey, point: DataPoint) => void;
-  moveControlPoint: (signalId: SignalKey, pointIndex: number, newPoint: DataPoint) => void;
-  deleteControlPoint: (signalId: SignalKey, pointIndex: number) => void;
-  undoLastControlPoint: (signalId: SignalKey) => void;
-  redoLastControlPoint: (signalId: SignalKey) => void;
-  regenerateSignalFromControlPoints: (signalId: SignalKey) => void;
+  // Reset action
   resetSignalToDefault: (signalId: SignalKey) => void;
-  
-  // Zoom actions
-  setSignalZoom: (signalId: SignalKey, scale: 'full' | '5s' | '30s' | '5m' | '10m', startTime?: number) => void;
   
   // Export actions
   exportRows: (selectedColumns: string[]) => Record<string, string | number | null | undefined>[];
@@ -98,16 +79,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
           newStates[signalId] = {
             id: signalId,
             data: generateBaselineData(signalId, get().duration, get().sampleRate),
-            controlPoints: [], // Initialize with empty control points
-            undoHistory: [], // Initialize with empty undo history
-            redoHistory: [], // Initialize with empty redo history
             isVisible: true,
             order: nextOrder,
-            zoom: {
-              scale: 'full',
-              startTime: 0,
-              endTime: get().duration,
-            }
           };
         } else {
           // Signal was previously created but deselected - make it visible
@@ -141,16 +114,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
         [signalId]: {
           id: signalId,
           data: generateBaselineData(signalId, get().duration, get().sampleRate),
-          controlPoints: [], // Initialize with empty control points
-          undoHistory: [], // Initialize with empty undo history
-          redoHistory: [], // Initialize with empty redo history
           isVisible: true,
           order: nextOrder,
-          zoom: {
-            scale: 'full',
-            startTime: 0,
-            endTime: get().duration,
-          }
         }
       }
     });
@@ -202,11 +167,6 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
         newStates[typedSignalId] = {
           ...currentState,
           data: generateBaselineData(typedSignalId, seconds, get().sampleRate),
-          // Update zoom if it extends beyond new duration
-          zoom: {
-            ...currentState.zoom,
-            endTime: currentState.zoom.scale === 'full' ? seconds : Math.min(currentState.zoom.endTime, seconds)
-          }
         };
       }
     });
@@ -235,235 +195,14 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     set({ signalStates: newStates });
   },
   
-  // Control point methods
-  addControlPoint: (signalId, point) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState) return;
-
-    // Save current state to undo history before making changes
-    const undoHistory = [...currentState.undoHistory, [...currentState.controlPoints]];
-    // Clear redo history when a new action is performed
-    const redoHistory: DataPoint[][] = [];
-
-    // Keep only last 50 undo steps to prevent memory issues
-    if (undoHistory.length > 50) {
-      undoHistory.shift();
-    }
-
-    // Constrain the point to signal bounds and add creation timestamp
-    const signal = SIGNALS[signalId];
-    const constrainedPoint = {
-      ...point,
-      y: Math.max(signal.min, Math.min(signal.max, point.y)),
-      x: Math.max(0, Math.min(get().duration * 1000, point.x)),
-      createdAt: Date.now(), // Add timestamp for proper undo order
-    };
-
-    // Insert in chronological order
-    const newControlPoints = [...currentState.controlPoints, constrainedPoint]
-      .sort((a, b) => a.x - b.x);
-
-    const updatedState = {
-      ...currentState,
-      controlPoints: newControlPoints,
-      undoHistory,
-      redoHistory,
-    };
-
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-
-    // Regenerate signal data from control points
-    get().regenerateSignalFromControlPoints(signalId);
-  },
-  
-  moveControlPoint: (signalId, pointIndex, newPoint) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState || !currentState.controlPoints[pointIndex]) return;
-    
-    const signal = SIGNALS[signalId];
-    const constrainedPoint = {
-      ...newPoint,
-      y: Math.max(signal.min, Math.min(signal.max, newPoint.y)),
-      x: Math.max(0, Math.min(get().duration * 1000, newPoint.x)),
-    };
-    
-    const newControlPoints = [...currentState.controlPoints];
-    newControlPoints[pointIndex] = constrainedPoint;
-    
-    // Re-sort in chronological order
-    newControlPoints.sort((a, b) => a.x - b.x);
-    
-    const updatedState = {
-      ...currentState,
-      controlPoints: newControlPoints,
-    };
-    
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-    
-    // Regenerate signal data from control points
-    get().regenerateSignalFromControlPoints(signalId);
-  },
-  
-  deleteControlPoint: (signalId, pointIndex) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState || !currentState.controlPoints[pointIndex]) return;
-
-    // Save current state to undo history before making changes
-    const undoHistory = [...currentState.undoHistory, [...currentState.controlPoints]];
-    // Clear redo history when a new action is performed
-    const redoHistory: DataPoint[][] = [];
-
-    // Keep only last 50 undo steps to prevent memory issues
-    if (undoHistory.length > 50) {
-      undoHistory.shift();
-    }
-
-    const newControlPoints = currentState.controlPoints.filter((_, index) => index !== pointIndex);
-
-    const updatedState = {
-      ...currentState,
-      controlPoints: newControlPoints,
-      undoHistory,
-      redoHistory,
-    };
-
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-
-    // Regenerate signal data from control points
-    get().regenerateSignalFromControlPoints(signalId);
-  },
-  
-  undoLastControlPoint: (signalId) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState || currentState.undoHistory.length === 0) return;
-
-    // Get the last state from undo history
-    const undoHistory = [...currentState.undoHistory];
-    const previousState = undoHistory.pop()!;
-    
-    // Save current state to redo history
-    const redoHistory = [...currentState.redoHistory, [...currentState.controlPoints]];
-
-    const updatedState = {
-      ...currentState,
-      controlPoints: previousState,
-      undoHistory,
-      redoHistory,
-    };
-
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-
-    // Regenerate signal data from control points
-    get().regenerateSignalFromControlPoints(signalId);
-  },
-
-  redoLastControlPoint: (signalId) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState || currentState.redoHistory.length === 0) return;
-
-    // Get the last state from redo history
-    const redoHistory = [...currentState.redoHistory];
-    const nextState = redoHistory.pop()!;
-    
-    // Save current state to undo history
-    const undoHistory = [...currentState.undoHistory, [...currentState.controlPoints]];
-
-    const updatedState = {
-      ...currentState,
-      controlPoints: nextState,
-      undoHistory,
-      redoHistory,
-    };
-
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-
-    // Regenerate signal data from control points
-    get().regenerateSignalFromControlPoints(signalId);
-  },
-  
-  regenerateSignalFromControlPoints: (signalId) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState) return;
-    
-    const signal = SIGNALS[signalId];
-    const { controlPoints } = currentState;
-    const { duration, sampleRate } = get();
-    
-    // Generate interpolated data
-    const samples = Math.floor((duration * 1000) / sampleRate);
-    const newData: DataPoint[] = [];
-    
-    for (let i = 0; i <= samples; i++) {
-      const x = i * sampleRate;
-      let y = signal.def; // Default value
-      
-      if (controlPoints.length === 0) {
-        // No control points - use baseline
-        y = signal.def;
-      } else if (controlPoints.length === 1) {
-        // Single control point - use that value
-        y = controlPoints[0].y;
-      } else {
-        // Multiple control points - interpolate
-        y = interpolateValue(x, controlPoints, signal.def);
-      }
-      
-      newData.push({ x, y });
-    }
-    
-    const updatedState = {
-      ...currentState,
-      data: newData,
-    };
-    
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-  },
-  
   resetSignalToDefault: (signalId) => {
     const states = get().signalStates;
     const currentState = states[signalId];
     if (!currentState) return;
     
-    // Clear all control points and regenerate baseline data
+    // Reset to baseline data
     const updatedState = {
       ...currentState,
-      controlPoints: [], // Clear all control points
       data: generateBaselineData(signalId, get().duration, get().sampleRate), // Reset to baseline
     };
     
@@ -475,61 +214,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     });
   },
   
-  setSignalZoom: (signalId, scale, startTime) => {
-    const states = get().signalStates;
-    const currentState = states[signalId];
-    if (!currentState) return;
-    
-    const duration = get().duration;
-    let newStartTime = startTime ?? 0;
-    let newEndTime = duration;
-    
-    // Calculate time ranges based on scale
-    switch (scale) {
-      case '5s':
-        newEndTime = Math.min(newStartTime + 4, duration);
-        break;
-      case '30s':
-        newEndTime = Math.min(newStartTime + 30, duration);
-        break;
-      case '5m':
-        newEndTime = Math.min(newStartTime + 300, duration); // 5 minutes = 300 seconds
-        break;
-      case '10m':
-        newEndTime = Math.min(newStartTime + 600, duration); // 10 minutes = 600 seconds
-        break;
-      case 'full':
-      default:
-        newStartTime = 0;
-        newEndTime = duration;
-        break;
-    }
-    
-    // Ensure we don't exceed bounds
-    if (newEndTime > duration) {
-      newEndTime = duration;
-      if (scale !== 'full') {
-        const scaleSeconds = scale === '5s' ? 5 : scale === '30s' ? 30 : scale === '5m' ? 300 : 600;
-        newStartTime = Math.max(0, newEndTime - scaleSeconds);
-      }
-    }
-    
-    const updatedState = {
-      ...currentState,
-      zoom: {
-        scale,
-        startTime: newStartTime,
-        endTime: newEndTime,
-      }
-    };
-    
-    set({
-      signalStates: {
-        ...states,
-        [signalId]: updatedState
-      }
-    });
-  },
+  
   
   exportRows: (selectedColumns) => {
     const { duration, sampleRate, signalStates } = get();
@@ -577,33 +262,3 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     return rows;
   },
 }));
-
-// Helper function for linear interpolation between control points
-function interpolateValue(x: number, controlPoints: DataPoint[], defaultValue: number): number {
-  // Find the two control points that bracket this x value
-  const sortedPoints = [...controlPoints].sort((a, b) => a.x - b.x);
-  
-  // Before first control point
-  if (x <= sortedPoints[0].x) {
-    return sortedPoints[0].y;
-  }
-  
-  // After last control point
-  if (x >= sortedPoints[sortedPoints.length - 1].x) {
-    return sortedPoints[sortedPoints.length - 1].y;
-  }
-  
-  // Between control points - linear interpolation
-  for (let i = 0; i < sortedPoints.length - 1; i++) {
-    const p1 = sortedPoints[i];
-    const p2 = sortedPoints[i + 1];
-    
-    if (x >= p1.x && x <= p2.x) {
-      // Linear interpolation formula
-      const ratio = (x - p1.x) / (p2.x - p1.x);
-      return p1.y + ratio * (p2.y - p1.y);
-    }
-  }
-  
-  return defaultValue;
-}
