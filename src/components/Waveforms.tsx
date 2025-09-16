@@ -41,11 +41,11 @@ interface SignalWaveformProps {
 
 export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   const chartRef = useRef<ChartJS<'line', { x: number; y: number }[]>>(null);
-  const { signalStates, resetSignalToDefault } = useScenarioStore();
+  const { signalStates, resetSignalToDefault, globalZoomSync, globalZoomState, setGlobalZoomState } = useScenarioStore();
   const [isDragging, setIsDragging] = useState(false); // Track drag state to prevent pan conflicts
   
-  // Store zoom state to persist across re-renders
-  const [zoomState, setZoomState] = useState<{ min: number; max: number } | null>(null);
+  // Store zoom state to persist across re-renders (only used when global sync is off)
+  const [localZoomState, setLocalZoomState] = useState<{ min: number; max: number } | null>(null);
   
   const signal = SIGNALS[signalId];
   const signalState = signalStates[signalId];
@@ -55,6 +55,10 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   }
 
   const { data } = signalState;
+
+  // Use global zoom state when sync is enabled, otherwise use local state
+  const currentZoomState = globalZoomSync ? globalZoomState : localZoomState;
+  const setCurrentZoomState = globalZoomSync ? setGlobalZoomState : setLocalZoomState;
 
   // Function to update point radius based on zoom level
   const updatePointRadius = (chart: Chart) => {
@@ -320,7 +324,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
             // Save zoom state to persist across re-renders
             const xScale = chart.scales.x;
             if (xScale) {
-              setZoomState({ min: xScale.min, max: xScale.max });
+              setCurrentZoomState({ min: xScale.min, max: xScale.max });
             }
             updatePointRadius(chart);
           },
@@ -338,7 +342,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
             // Save zoom state to persist across re-renders
             const xScale = chart.scales.x;
             if (xScale) {
-              setZoomState({ min: xScale.min, max: xScale.max });
+              setCurrentZoomState({ min: xScale.min, max: xScale.max });
             }
             updatePointRadius(chart);
           },
@@ -352,8 +356,8 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
           display: true,
           text: 'Time',
         },
-        min: zoomState?.min ?? 0,
-        max: zoomState?.max ?? duration,
+        min: currentZoomState?.min ?? 0,
+        max: currentZoomState?.max ?? duration,
         grid: {
           display: true,
         },
@@ -405,7 +409,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
               const chart = chartRef.current;
               if (chart) {
                 chart.resetZoom();
-                setZoomState(null); // Clear saved zoom state
+                setCurrentZoomState(null); // Clear saved zoom state
               }
             }}
             className="h-6 w-20 p-0 text-xs cursor-pointer"

@@ -26,6 +26,10 @@ export interface ScenarioStore {
   duration: number; // seconds (default 1800 = 30 min)
   sampleRate: number; // milliseconds (default 1000 = 1Hz)
   
+  // Global zoom sync
+  globalZoomSync: boolean;
+  globalZoomState: { min: number; max: number } | null;
+  
   // Actions
   setSelectedSignals: (signals: SignalKey[]) => void;
   initializeSignal: (signalId: SignalKey) => void;
@@ -33,6 +37,8 @@ export interface ScenarioStore {
   toggleSignalVisibility: (signalId: SignalKey) => void;
   setDuration: (seconds: number) => void;
   setSampleRate: (ms: number) => void;
+  setGlobalZoomSync: (enabled: boolean) => void;
+  setGlobalZoomState: (zoomState: { min: number; max: number } | null) => void;
   
   // Reset action
   resetSignalToDefault: (signalId: SignalKey) => void;
@@ -64,6 +70,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
   signalStates: {},
   duration: DEFAULT_TIMING.durationMinutes * 60, // 30 minutes in seconds
   sampleRate: DEFAULT_TIMING.sampleRateMs, // 1000ms = 1Hz
+  globalZoomSync: false,
+  globalZoomState: null,
   
   setSelectedSignals: (signals) => {
     const currentSignals = get().selectedSignals;
@@ -306,6 +314,14 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     });
     
     set({ signalStates: newStates });
+  },
+  
+  setGlobalZoomSync: (enabled) => {
+    set({ globalZoomSync: enabled });
+  },
+  
+  setGlobalZoomState: (zoomState) => {
+    set({ globalZoomState: zoomState });
   },
   
   resetSignalToDefault: (signalId) => {

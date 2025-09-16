@@ -1,8 +1,9 @@
 import { useScenarioStore } from '@/state/store'
 import { SignalWaveform } from '@/components/Waveforms'
+import { Switch } from '@/components/ui/switch'
 
 export function WaveformEditor() {
-  const { signalStates, duration } = useScenarioStore()
+  const { signalStates, duration, globalZoomSync, setGlobalZoomSync } = useScenarioStore()
   
   // Get visible signals sorted by order
   const visibleSignals = Object.values(signalStates)
@@ -32,11 +33,21 @@ export function WaveformEditor() {
       <div className="space-y-4">
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2">Signal Waveforms</h2>
-          <p className="text-sm text-gray-600">
-            Editing {visibleSignals.length} signal{visibleSignals.length !== 1 ? 's' : ''} • 
-            Duration: {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')} • 
-            Sample Rate: 1 Hz
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Editing {visibleSignals.length} signal{visibleSignals.length !== 1 ? 's' : ''} • 
+              Duration: {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')} • 
+              Sample Rate: 1 Hz
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Sync Zoom</span>
+              <Switch 
+                checked={globalZoomSync}
+                onCheckedChange={setGlobalZoomSync}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </div>
+          </div>
         </div>
         
         {visibleSignals.map((signalState) => {
