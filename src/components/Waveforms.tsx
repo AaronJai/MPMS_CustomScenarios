@@ -76,7 +76,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
     else if (pointsPerPixel > 0.1) newRadius = 2; // Standard points
     else newRadius = 3; // Larger points when zoomed in
     
-    // Update the main signal dataset (skip soft band datasets)
+    // Update the main signal dataset (skip soft band and modified points datasets)
     const mainDatasetIndex = signal.softLow !== undefined && signal.softHigh !== undefined ? 2 : 0;
     if (chart.data.datasets[mainDatasetIndex]) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,6 +153,31 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         dragData: true, // Enable dragging for this dataset
         order: 1, // Render in front of soft bands
       },
+      // User-modified points overlay (visual indicators)
+      {
+        label: 'Modified Points',
+        data: data
+          .map((point, index) => ({
+            x: point.x / 1000,
+            y: point.y,
+            index,
+            isModified: point.isUserModified
+          }))
+          .filter(point => point.isModified)
+          .map(point => ({
+            x: point.x,
+            y: point.y
+          })),
+        borderColor: 'rgba(255, 165, 0, 0.8)', // Orange border for modified points
+        backgroundColor: 'rgba(255, 165, 0, 0.6)', // Orange fill
+        borderWidth: 2,
+        pointRadius: 4, // Slightly larger than normal points
+        pointHoverRadius: 7,
+        pointHitRadius: 10,
+        showLine: false, // Only show points, not connecting lines
+        dragData: false, // Don't allow dragging this overlay dataset
+        order: 0, // Render on top of everything
+      },
     ],
   };
 
@@ -170,8 +195,9 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         labels: {
           font: { size: 12 },
           filter: (legendItem) => {
-            // Hide soft band datasets from legend (they contain "Normal Range" in label)
-            return !legendItem.text?.includes('Normal Range');
+            // Hide soft band datasets and modified points indicator from legend
+            return !legendItem.text?.includes('Normal Range') && 
+                   !legendItem.text?.includes('Modified Points');
           },
         },
         onClick: () => {
@@ -200,8 +226,9 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         onDragStart: (_e: unknown, datasetIndex: number, index: number, value: unknown) => {
           // Called when drag starts - disable pan to prevent conflicts
           // Only allow dragging the main signal dataset
-          const mainDatasetIndex = signal.softLow !== undefined && signal.softHigh !== undefined ? 2 : 0;
-          if (datasetIndex !== mainDatasetIndex) return;
+          const expectedMainIndex = (signal.softLow !== undefined && signal.softHigh !== undefined ? 2 : 0);
+          
+          if (datasetIndex !== expectedMainIndex) return;
           
           setIsDragging(true);
           console.log('Drag start', { datasetIndex, index, value });
@@ -219,18 +246,48 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         },
         onDragEnd: (_e: unknown, datasetIndex: number, index: number, value: unknown) => {
           // Called when drag ends - update the store data first, then re-enable pan
-          // Only allow dragging the main signal dataset (last dataset with dragData: true)
-          const mainDatasetIndex = signal.softLow !== undefined && signal.softHigh !== undefined ? 2 : 0;
-          if (datasetIndex !== mainDatasetIndex) return;
+          // Only allow dragging the main signal dataset
+          const expectedMainIndex = (signal.softLow !== undefined && signal.softHigh !== undefined ? 2 : 0);
+          if (datasetIndex !== expectedMainIndex) return;
           
           if (typeof value === 'object' && value && 'x' in value && 'y' in value) {
             const pointValue = value as { x: number; y: number };
             const constrainedValue = Math.max(signal.min, Math.min(signal.max, pointValue.y));
             
-            // Update the data array with the new value
+            // Create a copy of the data array
             const newData = [...data];
+            
             if (newData[index]) {
-              newData[index] = { ...newData[index], y: constrainedValue };
+              // Calculate the Y difference from the original point
+              const originalY = newData[index].y;
+              const deltaY = constrainedValue - originalY;
+              
+              // Mark the dragged point as user-modified
+              newData[index] = { 
+                ...newData[index], 
+                y: constrainedValue,
+                isUserModified: true 
+              };
+              
+              // Apply cascading effect to all points to the right until we hit another user-modified point
+              if (deltaY !== 0) {
+                for (let i = index + 1; i < newData.length; i++) {
+                  // Stop if we encounter another user-modified point
+                  if (newData[i].isUserModified) {
+                    break;
+                  }
+                  
+                  // Apply the same Y delta, but constrain to signal bounds
+                  const newY = newData[i].y + deltaY;
+                  const constrainedNewY = Math.max(signal.min, Math.min(signal.max, newY));
+                  
+                  newData[i] = { 
+                    ...newData[i], 
+                    y: constrainedNewY 
+                  };
+                }
+              }
+              
               useScenarioStore.getState().updateSignalData(signalId, newData);
             }
           }
@@ -336,7 +393,9 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   return (
     <div className="bg-white border rounded-lg p-4 mb-4">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-sm font-medium">{signalId} ({signal.unit})</h3>
+        <div>
+          <h3 className="text-sm font-medium">{signalId} ({signal.unit})</h3>
+        </div>
         <div className="flex items-center gap-2">
           
           <Button

@@ -5,6 +5,7 @@ import { formatSignalValue } from '@/lib/csv'
 export interface DataPoint {
   x: number; // time in milliseconds
   y: number; // signal value
+  isUserModified?: boolean; // tracks if this point was manually edited by user
 }
 
 export interface SignalState {
@@ -154,19 +155,75 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
   setDuration: (seconds) => {
     set({ duration: seconds });
     
-    // Regenerate all signal data with new duration
+    // Preserve existing signal data and only extend/truncate based on new duration
     const states = get().signalStates;
     const newStates: Partial<Record<SignalKey, SignalState>> = {};
+    const sampleRate = get().sampleRate;
+    const newSamples = Math.floor((seconds * 1000) / sampleRate);
     
     Object.keys(states).forEach(signalId => {
       const typedSignalId = signalId as SignalKey;
       const currentState = states[typedSignalId];
       if (currentState) {
-        // Keep all control points (they stay in the background)
-        // but regenerate baseline data with new duration
+        const signal = SIGNALS[typedSignalId];
+        if (!signal) return;
+        
+        const existingData = [...currentState.data];
+        const newData: DataPoint[] = [];
+        
+        // Copy existing data points that fit within the new duration
+        for (let i = 0; i <= newSamples; i++) {
+          const targetTime = i * sampleRate;
+          const existingPoint = existingData.find(point => point.x === targetTime);
+          
+          if (existingPoint) {
+            // Use existing data point (preserves user modifications)
+            newData.push({ ...existingPoint });
+          } else {
+            // Create new baseline point for times that didn't exist before
+            newData.push({ 
+              x: targetTime, 
+              y: signal.def,
+              isUserModified: false 
+            });
+          }
+        }
+        
+        // Apply cascading effects to any new points added when duration increased
+        // Find the last user-modified point in the existing data
+        const existingMaxTime = Math.max(...existingData.map(p => p.x));
+        const lastModifiedPoint = existingData
+          .filter(point => point.isUserModified && point.x <= existingMaxTime)
+          .sort((a, b) => b.x - a.x)[0]; // Get the rightmost modified point
+        
+        if (lastModifiedPoint && newSamples * sampleRate > existingMaxTime) {
+          // Duration was increased - apply cascading to new points
+          const deltaY = lastModifiedPoint.y - signal.def; // Difference from baseline
+          
+          // Find if there are any other modified points after the last one (there shouldn't be, but check)
+          const hasModifiedAfter = existingData.some(point => 
+            point.x > lastModifiedPoint.x && point.isUserModified
+          );
+          
+          if (!hasModifiedAfter && deltaY !== 0) {
+            // Apply the delta to all new points beyond the existing duration
+            for (let i = 0; i < newData.length; i++) {
+              const point = newData[i];
+              if (point.x > existingMaxTime && !point.isUserModified) {
+                const cascadedValue = signal.def + deltaY;
+                const constrainedValue = Math.max(signal.min, Math.min(signal.max, cascadedValue));
+                newData[i] = {
+                  ...point,
+                  y: constrainedValue
+                };
+              }
+            }
+          }
+        }
+        
         newStates[typedSignalId] = {
           ...currentState,
-          data: generateBaselineData(typedSignalId, seconds, get().sampleRate),
+          data: newData
         };
       }
     });
@@ -177,17 +234,73 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
   setSampleRate: (ms) => {
     set({ sampleRate: ms });
     
-    // Regenerate all signal data with new sample rate
+    // Preserve existing signal data and interpolate for new sample rate
     const states = get().signalStates;
     const newStates: Partial<Record<SignalKey, SignalState>> = {};
+    const duration = get().duration;
+    const newSamples = Math.floor((duration * 1000) / ms);
     
     Object.keys(states).forEach(signalId => {
       const typedSignalId = signalId as SignalKey;
       const currentState = states[typedSignalId];
       if (currentState) {
+        const signal = SIGNALS[typedSignalId];
+        if (!signal) return;
+        
+        const existingData = [...currentState.data];
+        const newData: DataPoint[] = [];
+        
+        // Create new data points at the new sample rate
+        for (let i = 0; i <= newSamples; i++) {
+          const targetTime = i * ms;
+          
+          // Find closest existing data point
+          const exactMatch = existingData.find(point => point.x === targetTime);
+          if (exactMatch) {
+            // Use exact match (preserves user modifications)
+            newData.push({ ...exactMatch });
+          } else {
+            // Find the two closest points for interpolation
+            const beforePoint = existingData
+              .filter(point => point.x < targetTime)
+              .sort((a, b) => b.x - a.x)[0]; // Closest before
+            const afterPoint = existingData
+              .filter(point => point.x > targetTime)
+              .sort((a, b) => a.x - b.x)[0]; // Closest after
+            
+            let interpolatedValue = signal.def;
+            let isModified = false;
+            
+            if (beforePoint && afterPoint) {
+              // Linear interpolation between two points
+              const timeDiff = afterPoint.x - beforePoint.x;
+              const valueDiff = afterPoint.y - beforePoint.y;
+              const timeFactor = (targetTime - beforePoint.x) / timeDiff;
+              interpolatedValue = beforePoint.y + (valueDiff * timeFactor);
+              
+              // Consider it modified if either surrounding point was modified
+              isModified = beforePoint.isUserModified || afterPoint.isUserModified || false;
+            } else if (beforePoint) {
+              // Use the last known value
+              interpolatedValue = beforePoint.y;
+              isModified = beforePoint.isUserModified || false;
+            } else if (afterPoint) {
+              // Use the first known value
+              interpolatedValue = afterPoint.y;
+              isModified = afterPoint.isUserModified || false;
+            }
+            
+            newData.push({ 
+              x: targetTime, 
+              y: interpolatedValue,
+              isUserModified: isModified
+            });
+          }
+        }
+        
         newStates[typedSignalId] = {
           ...currentState,
-          data: generateBaselineData(typedSignalId, get().duration, ms)
+          data: newData
         };
       }
     });
