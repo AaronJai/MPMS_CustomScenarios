@@ -80,12 +80,15 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
     else if (pointsPerPixel > 0.1) newRadius = 2; // Standard points
     else newRadius = 3; // Larger points when zoomed in
     
-    // Update the main signal dataset (skip soft band and modified points datasets)
+    // Update the main signal dataset point radius array
     const mainDatasetIndex = signal.softLow !== undefined && signal.softHigh !== undefined ? 2 : 0;
     if (chart.data.datasets[mainDatasetIndex]) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dataset = chart.data.datasets[mainDatasetIndex] as any;
-      dataset.pointRadius = newRadius;
+      // Create radius array: show modified points larger, others based on zoom
+      dataset.pointRadius = data.map(point => 
+        point.isUserModified ? Math.max(4, newRadius + 1) : newRadius
+      );
       chart.update('none'); // Update without animation for smooth experience
     }
   };
@@ -150,37 +153,18 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         borderColor: getSignalColor(signalId),
         backgroundColor: getSignalColor(signalId, 0.1),
         borderWidth: 2, // Standard line width
-        pointRadius: 0, // Start with no points - will be dynamically set
+        pointRadius: data.map(point => point.isUserModified ? 4 : 0), // Show modified points as larger
+        pointBackgroundColor: data.map(point => 
+          point.isUserModified ? 'rgba(255, 165, 0, 0.8)' : getSignalColor(signalId)
+        ), // Orange for modified points
+        pointBorderColor: data.map(point => 
+          point.isUserModified ? 'rgba(255, 165, 0, 1)' : getSignalColor(signalId)
+        ), // Orange border for modified points
         pointHoverRadius: 6,
         pointHitRadius: 10,
         tension: 0.1,
         dragData: true, // Enable dragging for this dataset
         order: 1, // Render in front of soft bands
-      },
-      // User-modified points overlay (visual indicators)
-      {
-        label: 'Modified Points',
-        data: data
-          .map((point, index) => ({
-            x: point.x / 1000,
-            y: point.y,
-            index,
-            isModified: point.isUserModified
-          }))
-          .filter(point => point.isModified)
-          .map(point => ({
-            x: point.x,
-            y: point.y
-          })),
-        borderColor: 'rgba(255, 165, 0, 0.8)', // Orange border for modified points
-        backgroundColor: 'rgba(255, 165, 0, 0.6)', // Orange fill
-        borderWidth: 2,
-        pointRadius: 4, // Slightly larger than normal points
-        pointHoverRadius: 7,
-        pointHitRadius: 10,
-        showLine: false, // Only show points, not connecting lines
-        dragData: false, // Don't allow dragging this overlay dataset
-        order: 0, // Render on top of everything
       },
     ],
   };
@@ -199,9 +183,8 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
         labels: {
           font: { size: 12 },
           filter: (legendItem) => {
-            // Hide soft band datasets and modified points indicator from legend
-            return !legendItem.text?.includes('Normal Range') && 
-                   !legendItem.text?.includes('Modified Points');
+            // Hide soft band datasets from legend
+            return !legendItem.text?.includes('Normal Range');
           },
         },
         onClick: () => {
