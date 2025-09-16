@@ -42,7 +42,7 @@ const FormSchema = z.object({
 })
 
 export function ColumnSelect() {
-  const { setSelectedSignals, exportRows, duration, setDuration } = useScenarioStore()
+  const { setSelectedSignals, exportRows, duration, setDuration, importCSV } = useScenarioStore()
   
   // Local state for duration input (in minutes)
   const [durationMinutes, setDurationMinutes] = useState(Math.round(duration / 60))
@@ -121,6 +121,35 @@ export function ColumnSelect() {
     toast("Duration Updated", {
       description: `Scenario length set to ${minutes} minutes`,
     })
+  }
+
+  // Handle CSV import
+  function handleImportCSV() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        await importCSV(file);
+        
+        // Update form to reflect imported signals
+        const currentSignals = useScenarioStore.getState().selectedSignals;
+        const newColumns = [...REQUIRED_COLUMNS, ...currentSignals]; // Include required columns
+        form.setValue('selectedColumns', newColumns);
+        
+        toast("CSV Import Successful", {
+          description: `Imported ${currentSignals.length} signals from ${file.name}`,
+        });
+      } catch (error) {
+        toast("CSV Import Failed", {
+          description: error instanceof Error ? error.message : "Unknown error occurred",
+        });
+      }
+    };
+    input.click();
   }
 
   return (
@@ -229,6 +258,15 @@ export function ColumnSelect() {
               size="sm"
             >
               Reset to Default Vitals
+            </Button>
+            <Button 
+              type="button" 
+              variant="outline"
+              onClick={handleImportCSV}
+              className="w-full text-xs cursor-pointer"
+              size="sm"
+            >
+              Import CSV
             </Button>
             <Button 
               type="submit" 

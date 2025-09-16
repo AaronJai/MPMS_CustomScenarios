@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { SignalKey, SIGNALS, DEFAULT_TIMING, formatTime, formatClock } from '@/data/columns'
 import { formatSignalValue } from '@/lib/csv'
+import Papa from 'papaparse'
 
 export interface DataPoint {
   x: number; // time in milliseconds
@@ -30,6 +31,9 @@ export interface ScenarioStore {
   globalZoomSync: boolean;
   globalZoomState: { min: number; max: number } | null;
   
+  // Global cascade toggle
+  globalCascadeEnabled: boolean;
+  
   // Actions
   setSelectedSignals: (signals: SignalKey[]) => void;
   initializeSignal: (signalId: SignalKey) => void;
@@ -39,6 +43,10 @@ export interface ScenarioStore {
   setSampleRate: (ms: number) => void;
   setGlobalZoomSync: (enabled: boolean) => void;
   setGlobalZoomState: (zoomState: { min: number; max: number } | null) => void;
+  setGlobalCascadeEnabled: (enabled: boolean) => void;
+  
+  // CSV import
+  importCSV: (file: File) => Promise<void>;
   
   // Reset action
   resetSignalToDefault: (signalId: SignalKey) => void;
@@ -72,6 +80,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
   sampleRate: DEFAULT_TIMING.sampleRateMs, // 1000ms = 1Hz
   globalZoomSync: false,
   globalZoomState: null,
+  globalCascadeEnabled: true, // Default cascade enabled
   
   setSelectedSignals: (signals) => {
     const currentSignals = get().selectedSignals;
@@ -322,6 +331,182 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
   
   setGlobalZoomState: (zoomState) => {
     set({ globalZoomState: zoomState });
+  },
+  
+  setGlobalCascadeEnabled: (enabled) => {
+    set({ globalCascadeEnabled: enabled });
+  },
+  
+  importCSV: async (file) => {
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          try {
+            const data = results.data as Record<string, string>[];
+            if (data.length === 0) {
+              reject(new Error('CSV file is empty'));
+              return;
+            }
+
+            // Detect time column (case insensitive)
+            const timeColumn = Object.keys(data[0]).find(key => 
+              key.toLowerCase().includes('time') || 
+              key.toLowerCase().includes('milliseconds')
+            );
+            
+            if (!timeColumn) {
+              reject(new Error('No time column found in CSV'));
+              return;
+            }
+
+            // Parse time values to determine duration and sample rate
+            const timeValues = data.map(row => {
+              const timeStr = row[timeColumn];
+              if (timeStr.includes(':')) {
+                // Format like "00:40:00_000" (HH:MM:SS_MMM) or "15:37" (MM:SS)
+                const parts = timeStr.split(':');
+                if (parts.length === 3) {
+                  // HH:MM:SS_MMM format
+                  const hours = Number(parts[0]);
+                  const minutes = Number(parts[1]);
+                  const [seconds, milliseconds] = parts[2].split('_').map(Number);
+                  return (hours * 3600 + minutes * 60 + seconds) * 1000 + (milliseconds || 0);
+                } else if (parts.length === 2) {
+                  // MM:SS format (legacy support)
+                  const [minutes, seconds] = parts.map(Number);
+                  return (minutes * 60 + seconds) * 1000;
+                }
+              } else {
+                // Assume milliseconds
+                return Number(timeStr);
+              }
+              return NaN;
+            }).filter(t => !isNaN(t)).sort((a, b) => a - b);
+
+            if (timeValues.length === 0) {
+              reject(new Error('No valid time values found'));
+              return;
+            }
+
+            // Calculate duration and sample rate from data
+            const maxTime = Math.max(...timeValues);
+            const minTime = Math.min(...timeValues);
+            const newDuration = Math.ceil((maxTime - minTime) / 1000); // Duration in seconds
+            const avgSampleRate = timeValues.length > 1 
+              ? Math.round((maxTime - minTime) / (timeValues.length - 1))
+              : 1000; // Default to 1 second if single point
+
+            // Find signal columns (exclude time columns)
+            const signalColumns = Object.keys(data[0]).filter(key => 
+              !key.toLowerCase().includes('time') && 
+              !key.toLowerCase().includes('clock') &&
+              !key.toLowerCase().includes('milliseconds')
+            );
+
+            // Map CSV columns to known signals (case insensitive matching)
+            const signalMapping: Record<string, SignalKey> = {};
+            const availableSignals = Object.keys(SIGNALS) as SignalKey[];
+            
+            signalColumns.forEach(csvColumn => {
+              const matchedSignal = availableSignals.find(signal =>
+                signal.toLowerCase() === csvColumn.toLowerCase()
+              );
+              if (matchedSignal) {
+                signalMapping[csvColumn] = matchedSignal;
+              }
+            });
+
+            const matchedSignals = Object.values(signalMapping);
+            if (matchedSignals.length === 0) {
+              reject(new Error('No matching signal columns found'));
+              return;
+            }
+
+            // Update duration and sample rate
+            set({ 
+              duration: newDuration,
+              sampleRate: Math.max(1000, avgSampleRate), // At least 1 second sample rate
+              globalCascadeEnabled: false // Disable cascade for imported data
+            });
+
+            // Parse data for each matched signal
+            const newSignalStates: Partial<Record<SignalKey, SignalState>> = {};
+            const currentStates = get().signalStates;
+            let nextOrder = Math.max(...Object.values(currentStates).map(s => s.order), 0);
+
+            matchedSignals.forEach(signalId => {
+              const csvColumn = Object.keys(signalMapping).find(k => signalMapping[k] === signalId)!;
+              const signal = SIGNALS[signalId];
+              
+              const signalData: DataPoint[] = data.map(row => {
+                const timeStr = row[timeColumn];
+                let timeMs: number;
+                
+                if (timeStr.includes(':')) {
+                  const parts = timeStr.split(':');
+                  if (parts.length === 3) {
+                    // HH:MM:SS_MMM format
+                    const hours = Number(parts[0]);
+                    const minutes = Number(parts[1]);
+                    const [seconds, milliseconds] = parts[2].split('_').map(Number);
+                    timeMs = (hours * 3600 + minutes * 60 + seconds) * 1000 + (milliseconds || 0);
+                  } else if (parts.length === 2) {
+                    // MM:SS format (legacy support)
+                    const [minutes, seconds] = parts.map(Number);
+                    timeMs = (minutes * 60 + seconds) * 1000;
+                  } else {
+                    timeMs = Number(timeStr);
+                  }
+                } else {
+                  timeMs = Number(timeStr);
+                }
+
+                const valueStr = row[csvColumn];
+                let value = Number(valueStr);
+                
+                // Constrain to signal bounds
+                value = Math.max(signal.min, Math.min(signal.max, value));
+
+                return {
+                  x: timeMs,
+                  y: value,
+                  isUserModified: false // Treat as new baseline
+                };
+              }).filter(point => !isNaN(point.x) && !isNaN(point.y))
+                .sort((a, b) => a.x - b.x); // Sort by time
+
+              if (signalData.length > 0) {
+                nextOrder++;
+                newSignalStates[signalId] = {
+                  id: signalId,
+                  data: signalData,
+                  isVisible: true,
+                  order: nextOrder
+                };
+              }
+            });
+
+            // Update selected signals and signal states
+            set({
+              selectedSignals: matchedSignals,
+              signalStates: {
+                ...currentStates,
+                ...newSignalStates
+              }
+            });
+
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        },
+        error: (error) => {
+          reject(new Error(`CSV parsing failed: ${error.message}`));
+        }
+      });
+    });
   },
   
   resetSignalToDefault: (signalId) => {

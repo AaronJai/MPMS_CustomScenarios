@@ -41,7 +41,7 @@ interface SignalWaveformProps {
 
 export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
   const chartRef = useRef<ChartJS<'line', { x: number; y: number }[]>>(null);
-  const { signalStates, resetSignalToDefault, globalZoomSync, globalZoomState, setGlobalZoomState } = useScenarioStore();
+  const { signalStates, resetSignalToDefault, globalZoomSync, globalZoomState, setGlobalZoomState, globalCascadeEnabled } = useScenarioStore();
   const [isDragging, setIsDragging] = useState(false); // Track drag state to prevent pan conflicts
   
   // Store zoom state to persist across re-renders (only used when global sync is off)
@@ -95,8 +95,8 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
 
   // Helper function for consistent time formatting
   const formatTime = (seconds: number): string => {
-    // Round to whole seconds for clean display
-    const totalSeconds = Math.round(seconds);
+    // Handle non-rounded durations properly
+    const totalSeconds = Math.floor(seconds);
     const minutes = Math.floor(totalSeconds / 60);
     const remainingSeconds = totalSeconds % 60;
     
@@ -257,7 +257,8 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
               };
               
               // Apply cascading effect to all points to the right until we hit another user-modified point
-              if (deltaY !== 0) {
+              // Only apply cascading if globally enabled
+              if (deltaY !== 0 && globalCascadeEnabled) {
                 for (let i = index + 1; i < newData.length; i++) {
                   // Stop if we encounter another user-modified point
                   if (newData[i].isUserModified) {
