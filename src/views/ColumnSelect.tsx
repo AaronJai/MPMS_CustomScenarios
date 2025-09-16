@@ -156,7 +156,7 @@ export function ColumnSelect() {
                       variant="outline"
                       size="sm"
                       onClick={handleDurationUpdate}
-                      className="h-8 px-3 text-xs"
+                      className="h-8 px-3 text-xs cursor-pointer"
                     >
                       Update
                     </Button>
