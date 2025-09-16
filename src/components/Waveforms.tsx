@@ -88,6 +88,9 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
 
   const { data, controlPoints, zoom } = signalState;
 
+  // Filter control points to only show those within current duration
+  const visibleControlPoints = controlPoints.filter(point => point.x <= duration * 1000);
+
   // Helper function for consistent time formatting
   const formatTime = (seconds: number, zoomScale?: string): string => {
     // For fine zoom levels, show decimal precision
@@ -128,7 +131,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
       // Control points
       {
         label: 'Control Points',
-        data: controlPoints.map(point => ({
+        data: visibleControlPoints.map(point => ({
           x: point.x / 1000, // Convert ms to seconds - keep decimal precision
           y: point.y
         })),
@@ -360,7 +363,7 @@ export function SignalWaveform({ signalId, duration }: SignalWaveformProps) {
             </div>
           )}
           <div className="text-xs text-gray-500">
-            {controlPoints.length} control point{controlPoints.length !== 1 ? 's' : ''} • 
+            {visibleControlPoints.length} control point{visibleControlPoints.length !== 1 ? 's' : ''} • 
             {isDeleteMode ? (
               <> Click point to delete • 'Z' to undo • 'Y' to redo</>
             ) : (

@@ -4,14 +4,14 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -42,7 +42,10 @@ const FormSchema = z.object({
 })
 
 export function ColumnSelect() {
-  const { setSelectedSignals, exportRows } = useScenarioStore()
+  const { setSelectedSignals, exportRows, duration, setDuration } = useScenarioStore()
+  
+  // Local state for duration input (in minutes)
+  const [durationMinutes, setDurationMinutes] = useState(Math.round(duration / 60))
   
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -55,6 +58,11 @@ export function ColumnSelect() {
   useEffect(() => {
     setSelectedSignals(DEFAULT_ACTIVE)
   }, [setSelectedSignals])
+
+  // Sync local duration state when store duration changes
+  useEffect(() => {
+    setDurationMinutes(Math.round(duration / 60))
+  }, [duration])
 
   function onSubmit(data: z.infer<typeof FormSchema>) {
     // Filter out required columns to get only the signals
@@ -106,6 +114,15 @@ export function ColumnSelect() {
     setSelectedSignals(selectedSignals)
   }
 
+  // Handle duration update
+  function handleDurationUpdate() {
+    const minutes = Math.max(1, Math.min(240, durationMinutes))
+    setDuration(minutes * 60) // Convert to seconds
+    toast("Duration Updated", {
+      description: `Scenario length set to ${minutes} minutes`,
+    })
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 border-b">
@@ -123,9 +140,27 @@ export function ColumnSelect() {
             render={() => (
               <FormItem className="flex-1 flex flex-col">
                 <div className="px-4 py-3 border-b">
-                  <FormDescription className="text-xs">
-                    Time columns are always required. Select additional vital signs to edit.
-                  </FormDescription>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="240"
+                      value={durationMinutes}
+                      onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                      className="w-16 h-8 text-xs"
+                      placeholder="30"
+                    />
+                    <span className="text-xs text-gray-600">minutes</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDurationUpdate}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Update
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto px-4 py-2">

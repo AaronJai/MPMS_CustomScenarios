@@ -197,9 +197,16 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
       const typedSignalId = signalId as SignalKey;
       const currentState = states[typedSignalId];
       if (currentState) {
+        // Keep all control points (they stay in the background)
+        // but regenerate baseline data with new duration
         newStates[typedSignalId] = {
           ...currentState,
-          data: generateBaselineData(typedSignalId, seconds, get().sampleRate)
+          data: generateBaselineData(typedSignalId, seconds, get().sampleRate),
+          // Update zoom if it extends beyond new duration
+          zoom: {
+            ...currentState.zoom,
+            endTime: currentState.zoom.scale === 'full' ? seconds : Math.min(currentState.zoom.endTime, seconds)
+          }
         };
       }
     });
