@@ -4,7 +4,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar"
-import { ColumnSelect } from "@/views/ColumnSelect"
+import { ColumnSelect } from "@/components/ColumnSelect"
 
 export function AppSidebar() {
   return (

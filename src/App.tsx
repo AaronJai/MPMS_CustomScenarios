@@ -1,5 +1,5 @@
 import { SidebarProvider, SidebarTrigger, SidebarInset } from './components/ui/sidebar'
-import { AppSidebar } from './components/AppSidebar'
+import { AppSidebar } from './views/AppSidebar'
 import { WaveformEditor } from './views/WaveformEditor'
 
 function App() {
